@@ -13,6 +13,8 @@ pub enum EngineError {
     Recognizer(#[from] visage_core::recognizer::RecognizerError),
     #[error("no face detected in any captured frame")]
     NoFaceDetected,
+    #[error("verification timed out")]
+    VerifyTimeout,
     #[error("engine thread exited")]
     ChannelClosed,
 }
@@ -41,6 +43,7 @@ enum EngineRequest {
         gallery: Vec<FaceModel>,
         threshold: f32,
         frames_count: usize,
+        timeout: std::time::Duration,
         reply: oneshot::Sender<Result<VerifyResult, EngineError>>,
     },
 }
@@ -71,6 +74,7 @@ impl EngineHandle {
         gallery: Vec<FaceModel>,
         threshold: f32,
         frames_count: usize,
+        timeout: std::time::Duration,
     ) -> Result<VerifyResult, EngineError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.tx
@@ -78,6 +82,7 @@ impl EngineHandle {
                 gallery,
                 threshold,
                 frames_count,
+                timeout,
                 reply: reply_tx,
             })
             .await
@@ -162,8 +167,10 @@ pub fn spawn_engine(
                         gallery,
                         threshold,
                         frames_count,
+                        timeout,
                         reply,
                     } => {
+                        let deadline = std::time::Instant::now() + timeout;
                         let result = run_verify(
                             &camera,
                             &emitter,
@@ -172,6 +179,7 @@ pub fn spawn_engine(
                             &gallery,
                             threshold,
                             frames_count,
+                            deadline,
                         );
                         let _ = reply.send(result);
                     }
@@ -273,10 +281,19 @@ fn run_verify(
     gallery: &[FaceModel],
     threshold: f32,
     frames_count: usize,
+    deadline: std::time::Instant,
 ) -> Result<VerifyResult, EngineError> {
+    if std::time::Instant::now() > deadline {
+        return Err(EngineError::VerifyTimeout);
+    }
+
     activate_emitter(emitter);
     let capture_result = camera.capture_frames(frames_count);
     deactivate_emitter(emitter);
+
+    if std::time::Instant::now() > deadline {
+        return Err(EngineError::VerifyTimeout);
+    }
 
     let (frames, dark_skipped) = capture_result?;
     tracing::debug!(

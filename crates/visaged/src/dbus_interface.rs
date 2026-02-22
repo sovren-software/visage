@@ -89,14 +89,9 @@ impl VisageService {
 
         // Run engine with timeout (no lock held)
         let timeout = std::time::Duration::from_secs(timeout_secs);
-        let verify_fut = engine.verify(gallery, threshold, frames_count);
-
-        let result = tokio::time::timeout(timeout, verify_fut)
+        let result = engine
+            .verify(gallery, threshold, frames_count, timeout)
             .await
-            .map_err(|_| {
-                tracing::error!(user, "verify: timed out");
-                zbus::fdo::Error::Failed("verification timed out".to_string())
-            })?
             .map_err(|e| {
                 tracing::error!(error = %e, "verify failed");
                 zbus::fdo::Error::Failed(e.to_string())
