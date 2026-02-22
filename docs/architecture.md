@@ -558,7 +558,7 @@ with SHA-256 verification. Models are stored in `/var/lib/visage/models/`.
 | `ProtectHome` | `true` | No access to user home directories |
 | `NoNewPrivileges` | `true` | Prevent privilege escalation |
 | `PrivateTmp` | `true` | Isolated temp directory |
-| `DeviceAllow` | `/dev/video* rw` | Camera access only |
+| `DeviceAllow` | `char-video4linux rw` | Camera access (kernel device type — path globs don't work in cgroup v2) |
 | `ReadWritePaths` | `/var/lib/visage` | Database and model storage |
 | `MemoryDenyWriteExecute` | `false` | Required for ONNX Runtime JIT |
 

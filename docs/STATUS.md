@@ -84,9 +84,8 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 
 1. ~~End-to-end install test on Ubuntu 24.04~~ — **DONE** (2026-02-22, CCX20)
 
-2. **GitHub Actions CI pipeline** — no automated build, no release assets
-   - Currently requires local build: `cargo build --release --workspace && cargo deb -p visaged`
-   - Users cannot install without Rust toolchain + cargo-deb
+2. ~~GitHub Actions CI pipeline~~ — **DONE** (2026-02-22, `.github/workflows/ci.yml`)
+   - fmt, clippy, build, test, cargo-deb, GitHub Release on `release:` commit prefix
 
 3. ~~IR emitter suspend/resume hook~~ — **DONE** (systemd sleep hook restarts visaged on resume)
 

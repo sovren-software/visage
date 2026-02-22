@@ -7,6 +7,11 @@ analogous to Windows Hello. Built in Rust for memory safety in the authenticatio
 
 ## Status
 
+**v0.1 — end-to-end tested on Ubuntu 24.04.4 LTS.**
+
+All 6 implementation steps complete. Verified: enroll, verify, PAM/sudo integration,
+systemd hardening, D-Bus access control, install/remove/purge lifecycle, suspend/resume.
+
 | Step | Component | Status |
 |------|-----------|--------|
 | 1 | Camera capture pipeline (`visage-hw`) | **Complete** |
@@ -16,7 +21,7 @@ analogous to Windows Hello. Built in Rust for memory safety in the authenticatio
 | 5 | IR emitter integration (`visage-hw`) | **Complete** |
 | 6 | Ubuntu packaging & system integration | **Complete** |
 
-Not yet suitable for production use.
+Not yet suitable for production use — see [Known Limitations](docs/STATUS.md#known-limitations-at-v01).
 
 ## Architecture
 
@@ -45,8 +50,6 @@ Not yet suitable for production use.
 
 ## Installation (Ubuntu 24.04)
 
-### Install from .deb
-
 ```bash
 # Install the package
 sudo apt install ./visage_0.1.0_amd64.deb
@@ -57,15 +60,18 @@ sudo visage setup
 # Enroll your face
 sudo visage enroll --label default
 
-# Test — should authenticate via face, falls back to password on failure
+# Test — authenticates via face, falls back to password on failure
 sudo echo "face auth works"
 ```
+
+For full instructions — configuration, troubleshooting, multi-user, removal — see
+the [Operations Guide](docs/operations-guide.md).
 
 ### What the package does
 
 - Installs `visaged` (daemon), `visage` (CLI), and `pam_visage.so` (PAM module)
-- Enables the `visaged` systemd service
-- Configures PAM via `pam-auth-update` (face auth before password)
+- Enables the `visaged` systemd service and `visage-resume.service` (suspend/resume)
+- Configures PAM via `pam-auth-update` (face auth before password, password fallback)
 
 ### Removal
 
@@ -74,41 +80,35 @@ sudo apt remove visage     # removes binaries, disables PAM and service
 sudo apt purge visage      # also removes /var/lib/visage (models + face database)
 ```
 
-After removal, `sudo` returns to password-only authentication.
+After removal, `sudo` returns to password-only authentication immediately.
 
 ### Build from source
 
 ```bash
+sudo apt install libpam0g-dev libdbus-1-dev
+cargo install cargo-deb
+
 cargo build --release --workspace
 cargo deb -p visaged --no-build
 ```
 
-Requires `cargo-deb`: `cargo install cargo-deb`
-
 ## Usage
 
-**Prerequisites:** Download ONNX models via `visage setup` (or manually per `models/README.md`)
-and start the daemon.
-
 ```bash
-# Start the daemon on the system bus (required for PAM)
-# Use VISAGE_SESSION_BUS=1 to run on the session bus for development without sudo
-sudo visaged
-
 # Enroll your face
-visage enroll --label default
+sudo visage enroll --label default
 
-# Verify your face (exits 0 on match, 1 on no-match — shell-friendly)
+# Verify interactively (exits 0 on match, 1 on no-match)
 visage verify
 
 # List enrolled models
 visage list
 
-# Remove a model
-visage remove <model-id>
-
 # Show daemon status
 visage status
+
+# Remove a model
+sudo visage remove <model-id>
 ```
 
 ### Hardware discovery
@@ -142,28 +142,49 @@ a summary. Requires the daemon to be running for emitter activation.
 
 Tested on ASUS Zenbook 14 UM3406HA (AMD Ryzen AI, `/dev/video2` IR camera).
 
-The camera outputs native GREY format (640×360, 1 byte/pixel). Both GREY and
-YUYV pixel formats are supported; format is detected automatically at device open.
+The camera outputs native GREY format (640×360, 1 byte/pixel). GREY, YUYV, and Y16
+pixel formats are all supported; format is detected automatically at device open.
 
 Hardware quirks (IR emitter UVC control bytes) are tracked in `contrib/hw/`.
 See [contrib/hw/README.md](contrib/hw/README.md) for the contribution process.
 
+## Test Results (Ubuntu 24.04.4 LTS)
+
+End-to-end acceptance test — CCX20, USB webcam `/dev/video2`, GREY format, CPU-only ONNX.
+
+| Test | Result |
+|------|--------|
+| Enroll, verify, match | ✅ similarity 0.87–0.90 |
+| Daemon restart — data persists | ✅ |
+| Kill daemon — `sudo` falls back to password | ✅ |
+| `apt install` / `remove` / `purge` lifecycle | ✅ |
+| Systemd hardening (`ProtectSystem=strict`, `char-video4linux rw`) | ✅ |
+| D-Bus access control (non-root enroll rejected) | ✅ |
+| PAM stack (no terminal output on failure) | ✅ |
+| Suspend/resume via `visage-resume.service` | ✅ |
+
+Latency: ~1.4s on USB webcam + CPU-only ONNX. Expected <500ms with IR camera + GPU.
+
+Bugs fixed during testing: [DeviceAllow glob](docs/STATUS.md#bugs-found-during-testing),
+[tokio::time::timeout panic in zbus context](docs/STATUS.md#bugs-found-during-testing).
+
 ## Documentation
 
-- [Strategy — v2 to v3 Growth Map](docs/STRATEGY.md) ← start here
+- [Operations Guide](docs/operations-guide.md) ← installation, configuration, troubleshooting
 - [Release Status & Remaining Work](docs/STATUS.md)
+- [Strategy — v2 to v3 Growth Map](docs/STRATEGY.md)
 - [Architecture](docs/architecture.md)
 - [Threat Model](docs/threat-model.md)
 - [Architecture Review and Roadmap](docs/research/architecture-review-and-roadmap.md)
 - [v3 Vision — Forward-Looking Architecture](docs/research/v3-vision.md)
-- [Domain Audit — Technical Coverage and Knowledge Gaps](docs/research/domain-audit.md)
-- [Step 1 ADR — Camera Capture Pipeline](docs/decisions/001-camera-capture-pipeline.md)
-- [Step 2 ADR — ONNX Inference KB and Blocker Resolution](docs/decisions/002-onnx-inference-kb-and-blocker-resolution.md)
-- [Step 3 ADR — Daemon Integration Architecture](docs/decisions/003-daemon-integration.md)
-- [Step 4 ADR — ONNX Inference Pipeline Implementation](docs/decisions/004-inference-pipeline-implementation.md)
-- [Step 4 ADR — PAM Module and System Bus Migration](docs/decisions/005-pam-system-bus-migration.md)
-- [Step 5 ADR — IR Emitter Integration](docs/decisions/006-ir-emitter-integration.md)
-- [Step 6 ADR — Ubuntu Packaging](docs/decisions/007-ubuntu-packaging.md)
+- [Domain Audit](docs/research/domain-audit.md)
+- [ADR 001 — Camera Capture Pipeline](docs/decisions/001-camera-capture-pipeline.md)
+- [ADR 002 — ONNX Inference KB and Blocker Resolution](docs/decisions/002-onnx-inference-kb-and-blocker-resolution.md)
+- [ADR 003 — Daemon Integration Architecture](docs/decisions/003-daemon-integration.md)
+- [ADR 004 — ONNX Inference Pipeline Implementation](docs/decisions/004-inference-pipeline-implementation.md)
+- [ADR 005 — PAM Module and System Bus Migration](docs/decisions/005-pam-system-bus-migration.md)
+- [ADR 006 — IR Emitter Integration](docs/decisions/006-ir-emitter-integration.md)
+- [ADR 007 — Ubuntu Packaging](docs/decisions/007-ubuntu-packaging.md)
 
 ## License
 
