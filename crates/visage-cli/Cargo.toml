@@ -10,6 +10,8 @@ name = "visage"
 path = "src/main.rs"
 
 [dependencies]
+visage-hw = { path = "../visage-hw" }
+image = { workspace = true }
 zbus = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true }

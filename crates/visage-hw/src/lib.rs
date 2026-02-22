@@ -4,5 +4,9 @@
 //! for IR emitter activation.
 
 pub mod camera;
+pub mod frame;
 pub mod ir_emitter;
 pub mod quirks;
+
+pub use camera::{Camera, CameraError};
+pub use frame::Frame;
