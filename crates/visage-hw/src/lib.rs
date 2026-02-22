@@ -8,5 +8,5 @@ pub mod frame;
 pub mod ir_emitter;
 pub mod quirks;
 
-pub use camera::{Camera, CameraError};
+pub use camera::{Camera, CameraError, PixelFormat};
 pub use frame::Frame;

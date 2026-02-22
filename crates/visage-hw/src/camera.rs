@@ -32,6 +32,17 @@ pub struct DeviceInfo {
     pub bus: String,
 }
 
+/// Negotiated pixel format for the camera.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PixelFormat {
+    /// YUYV 4:2:2 packed (2 bytes/pixel, extract Y channel).
+    Yuyv,
+    /// 8-bit grayscale (1 byte/pixel, native IR camera output).
+    Grey,
+    /// 16-bit little-endian grayscale (2 bytes/pixel, common IR camera format).
+    Y16,
+}
+
 /// V4L2 camera device handle.
 pub struct Camera {
     device: Device,
@@ -39,8 +50,8 @@ pub struct Camera {
     pub height: u32,
     pub device_path: String,
     pub fourcc: FourCC,
-    /// True when the camera outputs native GREY (1 byte/pixel), skipping YUYV conversion.
-    is_grey: bool,
+    /// Negotiated pixel format.
+    pixel_format: PixelFormat,
 }
 
 impl Camera {
@@ -91,14 +102,17 @@ impl Camera {
         })?;
 
         let fourcc = negotiated.fourcc;
-        let is_grey = fourcc == FourCC::new(b"GREY");
-        let is_yuyv = fourcc == FourCC::new(b"YUYV");
-
-        if !is_grey && !is_yuyv {
+        let pixel_format = if fourcc == FourCC::new(b"GREY") {
+            PixelFormat::Grey
+        } else if fourcc == FourCC::new(b"YUYV") {
+            PixelFormat::Yuyv
+        } else if fourcc == FourCC::new(b"Y16 ") || fourcc == FourCC::new(b"Y16\0") {
+            PixelFormat::Y16
+        } else {
             return Err(CameraError::FormatNegotiationFailed(format!(
-                "unsupported pixel format: {fourcc:?} (need YUYV or GREY)"
+                "unsupported pixel format: {fourcc:?} (need YUYV, GREY, or Y16)"
             )));
-        }
+        };
 
         tracing::info!(
             width = negotiated.width,
@@ -113,7 +127,7 @@ impl Camera {
             height: negotiated.height,
             device_path: device_path.to_string(),
             fourcc,
-            is_grey,
+            pixel_format,
         })
     }
 
@@ -143,18 +157,40 @@ impl Camera {
 
     /// Convert a raw buffer to grayscale based on the negotiated format.
     fn buf_to_grayscale(&self, buf: &[u8]) -> Result<Vec<u8>, CameraError> {
-        if self.is_grey {
-            let expected = (self.width * self.height) as usize;
-            if buf.len() < expected {
-                return Err(CameraError::CaptureFailed(format!(
-                    "GREY buffer too short: expected {expected}, got {}",
-                    buf.len()
-                )));
+        let pixels = (self.width * self.height) as usize;
+
+        match self.pixel_format {
+            PixelFormat::Grey => {
+                if buf.len() < pixels {
+                    return Err(CameraError::CaptureFailed(format!(
+                        "GREY buffer too short: expected {pixels}, got {}",
+                        buf.len()
+                    )));
+                }
+                Ok(buf[..pixels].to_vec())
             }
-            Ok(buf[..expected].to_vec())
-        } else {
-            frame::yuyv_to_grayscale(buf, self.width, self.height)
-                .map_err(|e| CameraError::CaptureFailed(format!("YUYV conversion failed: {e}")))
+            PixelFormat::Y16 => {
+                let expected_bytes = pixels * 2;
+                if buf.len() < expected_bytes {
+                    return Err(CameraError::CaptureFailed(format!(
+                        "Y16 buffer too short: expected {expected_bytes}, got {}",
+                        buf.len()
+                    )));
+                }
+                // Y16: 16-bit little-endian per pixel, downscale to 8-bit
+                let mut gray = Vec::with_capacity(pixels);
+                for idx in 0..pixels {
+                    let low = buf[idx * 2] as u16;
+                    let high = buf[idx * 2 + 1] as u16;
+                    let value = (high << 8) | low;
+                    gray.push((value >> 8) as u8);
+                }
+                Ok(gray)
+            }
+            PixelFormat::Yuyv => {
+                frame::yuyv_to_grayscale(buf, self.width, self.height)
+                    .map_err(|e| CameraError::CaptureFailed(format!("YUYV conversion failed: {e}")))
+            }
         }
     }
 
