@@ -11,11 +11,13 @@
 The following is verified by working code and live hardware tests:
 
 - **V4L2 camera capture** — format negotiation (GREY/YUYV), mmap streaming, dark frame filtering, CLAHE. All working on `/dev/video2`. 9/9 unit tests pass.
+  - **Gap confirmed (chissu-pam audit 2026-02-21):** Y16 format not handled. Some IR cameras output 16-bit little-endian. Fix: `>> 8` high-byte extract in `buf_to_grayscale()`. ~10 lines.
 - **Frame data model** — `Frame` struct, YUYV→grayscale, histogram analysis implemented.
 - **ONNX crate selection** — `ort = "2.0.0-rc.11"` with `ndarray = "0.17"` (bumped from 0.16 — compile blocker resolved 2026-02-21). Session API documented in `Reference/Visage/ORT-Rust-API-Reference.md`.
 - **InsightFace model specs** — SCRFD det_10g.onnx I/O, anchor grid decode, ArcFace w600k_r50.onnx normalization (`/127.5`), 4-DOF similarity transform, L2 normalization, cosine similarity. All documented in `Reference/Visage/InsightFace-Model-Reference.md`.
 - **D-Bus interface skeleton** — zbus 5 `#[interface]` macro, method signatures, D-Bus security policy design (peer credential checks, XML policy for `Visage1`).
 - **PAM return code contract** — `PAM_IGNORE` (25) on all non-success paths. Never `PAM_AUTH_ERR`.
+  - **Gap confirmed (chissu-pam audit 2026-02-21):** `pam_sm_authenticate` signature is wrong — zero args, must be 4 (`pamh`, `flags`, `argc`, `argv`). Missing `pam_sm_setcred` export. No PAM conversation for user feedback. All three are Step 4 scope but the signature must be fixed before pam-visage can link.
 - **SQLite schema design** — embeddings as variable-length BLOB, WAL mode, root-only permissions, `quality_score` and `pose_label` columns planned.
 - **Quirks database format** — TOML files, VID:PID keyed, one file per camera model.
 - **System file layout** — all production paths documented in the roadmap.
