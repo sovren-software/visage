@@ -11,6 +11,33 @@ Visage is the Windows Hello equivalent for Linux — built right, from the groun
 
 ---
 
+## Ecosystem Position
+
+Visage is the entry point to the Aegis Systems privacy stack.
+
+**Sequencing:** Visage launches publicly (v0.2, Summer 2026) 4–6 months before Aegis Linux
+ships. Early adopters test hardware, contribute quirk entries, and validate the install
+lifecycle. By the time Aegis Linux ships, Visage has a live user base, a hardware
+compatibility matrix, and community-submitted packaging for major distros.
+
+**Flywheel:** Users install Visage today on Ubuntu/Arch/Fedora → they see
+*"the default face authentication layer for Aegis Linux"* → they anticipate the full
+hardened system. Visage builds credibility and awareness for Aegis Linux without any
+feature coupling.
+
+**Boundary:** Visage is and remains **facial authentication only**. Features that belong
+to the Aegis Linux desktop layer — gesture tracking, motion-based input, behavioral
+biometrics — will not be merged into Visage. This boundary is documented in
+[CONTRIBUTING.md](../CONTRIBUTING.md) and enforced by maintainers.
+
+**Launch target:** v0.2, Summer 2026. Coordinated announcement across r/linux, r/rust,
+r/privacy, Hacker News, and Phoronix. The announcement leads with the architectural
+story (persistent daemon, no subprocess cold start) rather than a specific speed
+multiplier — the multiplier will be a measured, published benchmark before any
+announcement copy references it.
+
+---
+
 ## The Problem We Are Solving
 
 Howdy works, occasionally. Two of its three camera backends have bugs. The PAM module
@@ -27,7 +54,8 @@ That is what Visage v2 is.
 | Version | Identity | Delivers |
 |---------|----------|----------|
 | Howdy | v1 — proof of concept | Face auth on Linux, fragile |
-| **Visage v2** | **The Foundation** | **Reliable, secure, fast face auth via persistent Rust daemon** |
+| **Visage v0.2** | **The Foundation** | **Reliable, secure, fast face auth via persistent Rust daemon** |
+| Visage v0.3 | Hardware breadth | IPU6 support, GPU inference, adaptive thresholds |
 | Visage v3 | The Platform | Self-calibrating, hardware-adaptive, multi-modal, AI-assisted |
 
 v2 must be usable and complete without any v3 capability.
@@ -48,13 +76,13 @@ v3 is a consequence of v2's design quality, not a prerequisite for v2's success.
 - Ubuntu 24.04 `.deb` package with `pam-auth-update` integration
 - `PAM_IGNORE` fallback — face unavailable always falls through to password. Never blocks.
 
-### v2 Success Criteria (v0.1 Release Gate)
+### v0.2 Success Criteria (Public Launch Gate)
 
 `sudo echo test` authenticates via face in <500ms with >95% reliability,
 falls back to password cleanly on timeout or failure, and can be installed and removed
 on Ubuntu 24.04 without breaking authentication.
 
-Full checklist: [architecture-review-and-roadmap.md](research/architecture-review-and-roadmap.md#v01-release-gate)
+Full checklist: [architecture-review-and-roadmap.md](research/architecture-review-and-roadmap.md#v02-release-gate)
 
 ### v2 Build Sequence
 

@@ -1,13 +1,19 @@
 # Visage
 
+> **Visage is the default face authentication layer for [Aegis Linux](https://aegis.computer) — shipping Summer 2026.**
+
 A modern, secure biometric authentication framework for Linux.
 
 Visage provides IR camera-based face authentication for Linux systems via PAM,
 analogous to Windows Hello. Built in Rust for memory safety in the authentication path.
 
+Unlike Howdy (Python subprocess per auth attempt, 2–3s cold start), Visage runs as
+a persistent daemon: the recognition pipeline is warm, camera ownership is stable,
+and authentication completes without subprocess overhead.
+
 ## Status
 
-**v0.1 — end-to-end tested on Ubuntu 24.04.4 LTS.**
+**v0.2 — feature-complete, end-to-end tested on Ubuntu 24.04.4 LTS.**
 
 All 6 implementation steps complete. Verified: enroll, verify, PAM/sudo integration,
 systemd hardening, D-Bus access control, install/remove/purge lifecycle, suspend/resume.
@@ -221,6 +227,14 @@ Bugs fixed during testing: [DeviceAllow glob](docs/STATUS.md#bugs-found-during-t
 - [ADR 006 — IR Emitter Integration](docs/decisions/006-ir-emitter-integration.md)
 - [ADR 007 — Ubuntu Packaging](docs/decisions/007-ubuntu-packaging.md)
 - [ADR 008 — Hardware Compatibility Detection](docs/decisions/008-hardware-compatibility-detection.md)
+
+## Contributing
+
+Visage is feature-complete for facial authentication. Community contributions are
+focused on **hardware validation** (IR camera quirks) and **distribution packaging**.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide, including the Adopt-a-Laptop
+program, the out-of-scope feature list, and packaging status by distro.
 
 ## License
 
