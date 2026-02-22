@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+case "$1" in
+    configure)
+        mkdir -p /var/lib/visage/models
+        chmod 700 /var/lib/visage
+        pam-auth-update --package visage 2>/dev/null || true
+        systemctl daemon-reload
+        systemctl enable visaged.service 2>/dev/null || true
+        if [ ! -f /var/lib/visage/models/det_10g.onnx ]; then
+            echo ""
+            echo ">>> Run 'sudo visage setup' to download face detection models (~182 MB)"
+            echo ""
+        fi
+        ;;
+esac

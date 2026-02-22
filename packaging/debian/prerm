@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+case "$1" in
+    remove|deconfigure)
+        systemctl stop visaged.service 2>/dev/null || true
+        systemctl disable visaged.service 2>/dev/null || true
+        pam-auth-update --remove visage 2>/dev/null || true
+        ;;
+esac

@@ -1,0 +1,25 @@
+[Unit]
+Description=Visage biometric authentication daemon
+After=dbus.service
+Requires=dbus.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/visaged
+Restart=on-failure
+RestartSec=5
+Environment=VISAGE_MODEL_DIR=/var/lib/visage/models
+Environment=VISAGE_DB_PATH=/var/lib/visage/faces.db
+Environment=RUST_LOG=visaged=info
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+DeviceAllow=/dev/video* rw
+ReadWritePaths=/var/lib/visage
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+MemoryDenyWriteExecute=false
+
+[Install]
+WantedBy=multi-user.target
