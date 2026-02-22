@@ -40,16 +40,18 @@ it would require the camera and models to be `Send + 'static` (achievable via `A
 but would create per-request overhead of acquiring the mutex and potentially allocating
 new sessions. The dedicated thread is simpler and avoids all of this.
 
-### 2. Session bus for development; system bus deferred to Step 4
+### 2. Session bus for development; system bus migration in Step 4
 
-**Decision:** `visaged` registers on the session bus (`zbus::Connection::session()`).
+**Decision (Step 3):** `visaged` registers on the session bus (`zbus::Connection::session()`).
 No D-Bus policy file is required for session bus operation.
 
 **Rationale:** Session bus access requires no policy configuration, eliminating a
-packaging dependency during development. PAM integration (Step 4) will require the
-system bus because PAM modules execute as root in a separate session context. That
-migration is a one-line change (`Connection::system()`) plus deploying the policy file
-at `packaging/dbus/org.freedesktop.Visage1.conf`.
+packaging dependency during development. PAM integration requires the system bus because
+PAM modules execute as root in a separate session context.
+
+**Step 4 resolution:** `visaged` and `visage-cli` now default to the system bus.
+`VISAGE_SESSION_BUS=1` provides a development fallback. The daemon logs which bus is
+active at startup. See [ADR 005](005-pam-system-bus-migration.md).
 
 ### 3. SQLite with WAL mode via tokio-rusqlite
 
@@ -104,9 +106,9 @@ is waiting.
 
 - Smoke testing requires a physical IR camera and downloaded ONNX model files. Unit
   tests (store roundtrip, cross-user protection, embedding fidelity) run without hardware.
-- Step 4 (PAM module) will need to switch to the system bus. The conf file is ready.
+- ~~Step 4 (PAM module) will need to switch to the system bus.~~ **Resolved in Step 4** —
+  daemon now defaults to system bus; policy file deployed to `/usr/share/dbus-1/system.d/`.
 - The `best_quality` field on `VerifyResult` is currently unused by the D-Bus handler.
-  It is preserved as a v3 hook for surfacing quality metadata to callers without a
-  schema change.
+  Preserved as a v3 hook for surfacing quality metadata to callers without a schema change.
 - No authentication on D-Bus callers in v2. The `user` parameter is caller-supplied
-  and not validated against the D-Bus sender identity. Step 4 should address this.
+  and not validated against the D-Bus sender identity. Deferred to Step 6.

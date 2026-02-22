@@ -7,7 +7,7 @@
 | 1 | Camera pipeline (visage-hw) | ✅ Complete |
 | 2 | ONNX inference pipeline (visage-core) | ✅ Complete |
 | 3 | Daemon (visaged) + CLI (visage-cli) | ✅ Complete |
-| 4 | PAM module (pam-visage) | Stub |
+| 4 | PAM module (pam-visage) + system bus migration | ✅ Complete |
 | 5 | IR emitter control | Stub |
 | 6 | Packaging (Ubuntu + NixOS) | Not started |
 
@@ -325,25 +325,105 @@ defaults — no migration needed when pose-indexed enrollment is added.
 **Cross-user protection:** Every mutation includes `WHERE user = ?`. `RemoveModel` returns
 `false` (not an error) if the model belongs to a different user.
 
+### Startup Sequence (Step 4 — System Bus)
+
+```
+1. Init tracing (RUST_LOG)
+2. Load Config from env vars
+3. spawn_engine() — opens camera + loads both ONNX models synchronously
+4. FaceModelStore::open() — creates SQLite DB + runs migrations if needed
+5. zbus SYSTEM bus (or session bus if VISAGE_SESSION_BUS=1): register
+   org.freedesktop.Visage1 at /org/freedesktop/Visage1
+6. Log which bus is active, wait for SIGINT/SIGTERM
+```
+
+The system bus requires:
+- D-Bus policy file installed at `/usr/share/dbus-1/system.d/org.freedesktop.Visage1.conf`
+- Daemon started with `sudo` (to own `org.freedesktop.Visage1`)
+
 ### Known Limitations (v2)
 
-1. **Session bus only.** Step 4 (PAM) requires the system bus because PAM modules execute
-   as root. Migration is one line (`Connection::system()`) plus deploying
-   `packaging/dbus/org.freedesktop.Visage1.conf` to `/usr/share/dbus-1/system.d/`.
+1. **No D-Bus caller authentication.** The `user` parameter is caller-supplied and not
+   validated against the D-Bus sender identity. A compromised caller can call `Verify`
+   for any username. Step 6 should bind `user` to the D-Bus peer credentials using
+   `GetConnectionCredentials`.
 
-2. **No D-Bus caller authentication.** The `user` parameter is caller-supplied and not
-   validated against the D-Bus sender identity. A compromised caller can enroll models
-   for any username. Step 4 should bind `user` to the D-Bus peer credentials.
+2. **best_quality unused.** `VerifyResult.best_quality` is computed but not exposed over
+   D-Bus. Reserved as a v3 hook for quality metadata without a schema change.
 
-3. **best_quality unused.** `VerifyResult.best_quality` (capture confidence of the best
-   matching frame) is computed but not exposed over D-Bus. Reserved as a v3 hook for
-   surfacing quality metadata without a schema change.
+3. **Single auth flow at a time.** The engine thread processes requests serially (depth-4
+   queue). Concurrent `Verify` calls serialize. Acceptable for v2; v3 would use a pool.
 
-4. **Single auth flow at a time.** The engine thread is a single goroutine with depth-4
-   queue. Concurrent `Verify` calls serialize behind the engine. Acceptable for v2 (one
-   auth at a time); v3 would require a pool.
+See [ADR 003](decisions/003-daemon-integration.md) and [ADR 005](decisions/005-pam-system-bus-migration.md).
 
-See [ADR 003](decisions/003-daemon-integration.md) for full decision log and rationale.
+## PAM Module (pam-visage) — Implemented
+
+### Authentication Flow
+
+```
+sudo echo test
+  │
+  ▼ PAM stack loads /path/to/libpam_visage.so
+  │
+  ├─ pam_get_user(pamh) → "ccross"
+  │
+  ├─ zbus::blocking::Connection::system()
+  │     → org.freedesktop.Visage1.Verify("ccross")
+  │
+  ├─ true  → PAM_SUCCESS (0)  → sudo proceeds
+  └─ false / error / timeout → PAM_IGNORE (25) → fall to password prompt
+```
+
+### Design Constraints
+
+| Constraint | Enforcement |
+|-----------|-------------|
+| No async runtime | `zbus::blocking` only — no tokio |
+| No panic across FFI | `std::panic::catch_unwind` wraps all Rust logic |
+| Never lock out user | Every error path returns `PAM_IGNORE`, never `PAM_AUTH_ERR` |
+| Correct ABI | 4-argument `extern "C"` — `pamh, flags, argc, argv` |
+| Forward-compatible | `#![warn(unsafe_op_in_unsafe_fn)]` — explicit `unsafe {}` blocks |
+
+### PAM Configuration
+
+Add **before** `@include common-auth` in `/etc/pam.d/sudo`:
+
+```
+auth  sufficient  /path/to/target/debug/libpam_visage.so
+```
+
+For production, install to `/usr/lib/security/pam_visage.so`.
+
+### Fallback Recovery
+
+If the PAM entry breaks `sudo`, recover with:
+
+```bash
+# pkexec doesn't go through sudo's PAM stack
+pkexec vim /etc/pam.d/sudo
+# Or from a root shell:
+su -c "vim /etc/pam.d/sudo"
+```
+
+### Known Limitations (Step 4)
+
+1. **D-Bus timeout: 10–25 s.** Under normal conditions the daemon's 10 s verify timeout
+   fires first. If the daemon deadlocks, the D-Bus default (~25 s) applies. A 3 s
+   client-side timeout is deferred to Step 6.
+
+2. **No caller authentication.** The `user` string passed to `Verify()` comes from
+   `pam_get_user` and is not validated against D-Bus peer credentials. Step 6 should
+   use `GetConnectionCredentials` to bind the call to the authenticated PAM user.
+
+3. **Development-only PAM config.** Manual `/etc/pam.d/sudo` edit. `pam-auth-update`
+   integration is Step 6 (packaging).
+
+4. **IR emitter not active.** Testing requires ambient light. Step 5 resolves this.
+
+5. **`eprintln!` logging.** Messages appear in the `sudo` terminal. Production syslog
+   (`LOG_AUTHPRIV`) is deferred to Step 6.
+
+See [ADR 005](decisions/005-pam-system-bus-migration.md) for full decision log.
 
 ## Security Model
 
