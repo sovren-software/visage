@@ -42,4 +42,4 @@ image = "0.25"
 
 # ONNX inference
 ort = "2.0.0-rc.11"
-ndarray = "0.16"
+ndarray = "0.17"
