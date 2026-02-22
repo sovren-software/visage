@@ -73,6 +73,7 @@ See [contrib/hw/README.md](contrib/hw/README.md) for the contribution process.
 ## Documentation
 
 - [Strategy — v2 to v3 Growth Map](docs/STRATEGY.md) ← start here
+- [Domain Audit — Technical Coverage and Knowledge Gaps](docs/research/domain-audit.md)
 - [Architecture](docs/architecture.md)
 - [Threat Model](docs/threat-model.md)
 - [Architecture Review and Roadmap](docs/research/architecture-review-and-roadmap.md)
