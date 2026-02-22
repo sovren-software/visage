@@ -1,0 +1,45 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/visaged",
+    "crates/pam-visage",
+    "crates/visage-cli",
+    "crates/visage-core",
+    "crates/visage-hw",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/Aigusta-Labs/visage"
+rust-version = "1.75"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# D-Bus IPC
+zbus = "5"
+
+# Logging / tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Image processing
+image = "0.25"
+
+# ONNX inference
+ort = "2.0.0-rc.11"
+ndarray = "0.16"

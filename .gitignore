@@ -1,0 +1,12 @@
+/target
+*.swp
+*.swo
+*~
+.env
+
+# ONNX model files (downloaded, not committed)
+models/*.onnx
+
+# Build artifacts
+*.so
+*.dylib

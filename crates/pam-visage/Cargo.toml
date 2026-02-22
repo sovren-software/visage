@@ -1,0 +1,14 @@
+[package]
+name = "pam-visage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Visage PAM module — thin D-Bus client for biometric auth"
+
+[lib]
+name = "pam_visage"
+crate-type = ["cdylib"]
+
+[dependencies]
+zbus = { workspace = true }
+tracing = { workspace = true }
