@@ -73,9 +73,14 @@ fn current_user() -> String {
 }
 
 async fn connect_proxy() -> Result<VisageProxy<'static>> {
-    let conn = zbus::Connection::session().await.map_err(|e| {
-        anyhow::anyhow!("failed to connect to session bus: {e} — is D-Bus running?")
-    })?;
+    let use_session = std::env::var("VISAGE_SESSION_BUS").is_ok();
+    let conn = if use_session {
+        zbus::Connection::session().await
+    } else {
+        zbus::Connection::system().await
+    }
+    .map_err(|e| anyhow::anyhow!("failed to connect to D-Bus: {e}"))?;
+
     let proxy = VisageProxy::new(&conn).await.map_err(|e| {
         anyhow::anyhow!("failed to create proxy: {e} — is visaged running?")
     })?;

@@ -46,7 +46,8 @@ async fn main() -> Result<()> {
     let model_count = store.count_all().await.unwrap_or(0);
     tracing::info!(db = %config.db_path.display(), models = model_count, "store opened");
 
-    // 4. Register D-Bus service on the session bus
+    // 4. Register D-Bus service on the system bus (required for PAM)
+    //    Set VISAGE_SESSION_BUS=1 to use session bus for development without sudo.
     let state = Arc::new(Mutex::new(AppState {
         config,
         engine,
@@ -55,13 +56,19 @@ async fn main() -> Result<()> {
 
     let service = VisageService { state };
 
-    let _conn = zbus::connection::Builder::session()?
-        .name("org.freedesktop.Visage1")?
-        .serve_at("/org/freedesktop/Visage1", service)?
-        .build()
-        .await?;
+    let use_session = std::env::var("VISAGE_SESSION_BUS").is_ok();
+    let _conn = if use_session {
+        zbus::connection::Builder::session()?
+    } else {
+        zbus::connection::Builder::system()?
+    }
+    .name("org.freedesktop.Visage1")?
+    .serve_at("/org/freedesktop/Visage1", service)?
+    .build()
+    .await?;
 
-    tracing::info!("visaged ready — listening on org.freedesktop.Visage1");
+    let bus_name = if use_session { "session" } else { "system" };
+    tracing::info!(bus = bus_name, "visaged ready — listening on org.freedesktop.Visage1");
 
     // 5. Wait for shutdown signal
     tokio::signal::ctrl_c().await?;

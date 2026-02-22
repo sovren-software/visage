@@ -11,4 +11,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 zbus = { workspace = true }
-tracing = { workspace = true }
+libc = { workspace = true }
