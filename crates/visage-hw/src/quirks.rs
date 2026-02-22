@@ -66,6 +66,29 @@ pub fn list_quirks() -> &'static [QuirkFile] {
     quirk_db()
 }
 
+/// Read the kernel driver name for a `/dev/videoN` device from sysfs.
+///
+/// Returns the basename of the `driver` symlink, e.g. `"uvcvideo"` or
+/// `"intel_ipu6_imx_phy"`. Returns `None` if the sysfs entry is absent
+/// (device not enumerated via udev, or non-Linux system).
+pub fn get_driver(device_path: &str) -> Option<String> {
+    let dev_name = std::path::Path::new(device_path).file_name()?.to_str()?;
+    let driver_link = format!("/sys/class/video4linux/{dev_name}/device/driver");
+    let resolved = std::fs::read_link(&driver_link).ok()?;
+    resolved.file_name()?.to_str().map(|s| s.to_string())
+}
+
+/// Returns `true` if this device is driven by Intel IPU6 (not UVC/V4L2).
+///
+/// IPU6 cameras use Intel's proprietary camera HAL and are **not** supported
+/// by Visage's V4L2/UVC pipeline. Callers should warn the user and suggest
+/// they check for a `uvcvideo`-driven IR device instead.
+pub fn is_ipu6_camera(device_path: &str) -> bool {
+    get_driver(device_path)
+        .map(|d| d.contains("ipu6") || d.contains("intel_ipu"))
+        .unwrap_or(false)
+}
+
 /// Read USB VID:PID from sysfs for a `/dev/videoN` device.
 ///
 /// Returns `None` if the device is not USB or sysfs is unavailable.

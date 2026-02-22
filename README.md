@@ -140,13 +140,45 @@ a summary. Requires the daemon to be running for emitter activation.
 
 ## Hardware Support
 
-Tested on ASUS Zenbook 14 UM3406HA (AMD Ryzen AI, `/dev/video2` IR camera).
+Visage works with **USB UVC IR cameras** — the class of IR / "Windows Hello" cameras
+that appear as standard V4L2 devices under the `uvcvideo` kernel driver. No external
+tools required: Visage includes built-in IR emitter activation via UVC extension unit
+control, so there is no dependency on `linux-enable-ir-emitter`.
 
-The camera outputs native GREY format (640×360, 1 byte/pixel). GREY, YUYV, and Y16
-pixel formats are all supported; format is detected automatically at device open.
+Pixel formats GREY (1 byte/pixel), YUYV (2 bytes/pixel), and Y16 (16-bit LE) are all
+supported and detected automatically at device open.
 
-Hardware quirks (IR emitter UVC control bytes) are tracked in `contrib/hw/`.
-See [contrib/hw/README.md](contrib/hw/README.md) for the contribution process.
+### Compatibility tiers
+
+| Tier | Camera stack | Visage support | Examples |
+|------|-------------|----------------|---------|
+| **Supported** | UVC (`uvcvideo` driver) | ✅ Full support | ASUS ZenBook, ThinkPad T/X (pre-Gen 11), HP EliteBook (UVC configs), Dell Latitude (UVC configs), TUXEDO InfinityBook |
+| **Not supported** | Intel IPU6 / MIPI / libcamera | ❌ Not yet | Newer Dell XPS, ThinkPad Gen 11+ (some configs), Intel "AI PC" cameras |
+| **No IR camera** | N/A | — | Framework, System76, Purism |
+
+**Not sure which your laptop has?** Run `visage discover` — it detects the kernel
+driver for each `/dev/video*` device and warns if an IPU6 camera is found.
+
+**ThinkPad note:** ThinkPad T-series and X1 Carbon laptops frequently ship with a
+separate USB UVC IR camera alongside the RGB webcam. These typically appear as a
+second `/dev/video*` node under `uvcvideo` and work with Visage. However, newer
+ThinkPad generations (Gen 11+) may use Intel IPU6 for the integrated camera stack.
+
+**IPU6 note:** Intel IPU6 cameras require the proprietary Intel camera HAL and
+libcamera, not V4L2. Supporting them is a separate milestone (v0.3+).
+
+### IR emitter quirks
+
+Some cameras require a specific UVC control byte sequence to activate the IR emitter.
+These are tracked in `contrib/hw/` as TOML files embedded at compile time.
+
+Confirmed quirk entries:
+
+| File | Device | Source |
+|------|--------|--------|
+| `04f2-b6d9.toml` | ASUS Zenbook 14 UM3406HA | Verified on hardware |
+
+To add support for your camera, see [contrib/hw/README.md](contrib/hw/README.md).
 
 ## Test Results (Ubuntu 24.04.4 LTS)
 

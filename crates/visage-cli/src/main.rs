@@ -218,7 +218,7 @@ async fn main() -> Result<()> {
 }
 
 fn cmd_discover() {
-    use visage_hw::quirks::{get_usb_ids, lookup_quirk};
+    use visage_hw::quirks::{get_usb_ids, is_ipu6_camera, lookup_quirk, get_driver};
 
     let mut entries: Vec<_> = std::fs::read_dir("/dev")
         .expect("cannot read /dev")
@@ -237,20 +237,45 @@ fn cmd_discover() {
         return;
     }
 
+    let mut ipu6_detected = false;
+
     for entry in entries {
         let path = format!("/dev/{}", entry.file_name().to_string_lossy());
+        let driver = get_driver(&path);
+
+        if is_ipu6_camera(&path) {
+            ipu6_detected = true;
+            let driver_name = driver.as_deref().unwrap_or("intel_ipu6");
+            println!("{path}  driver={driver_name}  [NOT SUPPORTED — IPU6 camera, not UVC]");
+            continue;
+        }
+
         match get_usb_ids(&path) {
             Some((vid, pid)) => {
+                let driver_label = driver.as_deref().unwrap_or("unknown");
                 let quirk_status = match lookup_quirk(vid, pid) {
                     Some(q) => format!("quirk: {} \u{2713}", q.device.name),
                     None => format!("no quirk (VID={vid:#06x} PID={pid:#06x})"),
                 };
-                println!("{path}  VID={vid:#06x} PID={pid:#06x}  {quirk_status}");
+                println!("{path}  driver={driver_label}  VID={vid:#06x} PID={pid:#06x}  {quirk_status}");
             }
             None => {
-                println!("{path}  (not USB or no sysfs entry)");
+                let driver_label = driver.as_deref().unwrap_or("unknown");
+                println!("{path}  driver={driver_label}  (not USB or no sysfs entry)");
             }
         }
+    }
+
+    if ipu6_detected {
+        eprintln!();
+        eprintln!("WARNING: Intel IPU6 camera(s) detected.");
+        eprintln!("  IPU6 cameras use Intel's proprietary camera HAL and require libcamera,");
+        eprintln!("  not the V4L2/UVC stack that Visage uses. They are not supported in v0.1.");
+        eprintln!();
+        eprintln!("  If your laptop has a separate USB IR camera, it may still appear above");
+        eprintln!("  under a different /dev/videoN node with driver=uvcvideo.");
+        eprintln!();
+        eprintln!("  See: https://github.com/Aigusta-Labs/visage/blob/main/docs/hardware-compatibility.md");
     }
 }
 
