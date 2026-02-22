@@ -181,21 +181,30 @@ of UVC control bytes are the adoption growth path.
 
 ## Implementation Roadmap
 
-### Step 1: Camera Capture + Frame Pipeline (`visage-hw`)
+### Step 1: Camera Capture + Frame Pipeline (`visage-hw`) ✅ COMPLETE
 
-**What to build:**
-- V4L2 frame capture using `nix` crate (direct ioctl, not `nokhwa`)
-- Open device, negotiate YUYV format
-- Convert to grayscale
-- 8-bucket histogram dark frame filter (skip if >95% pixels in darkest bucket)
-- CLAHE histogram equalization (improves IR camera contrast)
-- Frame struct with metadata: device path, dimensions, timestamp, is_dark
+**Implemented:** 2026-02-21 · Commit `678dda1`
 
-**Why direct V4L2 (not nokhwa):** We need full control over UVC extension units
-for IR emitter control. `nokhwa` abstracts this away.
+**What was built:**
+- V4L2 frame capture via `v4l = "0.14"` crate (safe ioctl wrapper)
+- Open device, format negotiation — accepts YUYV and GREY pixel formats
+- YUYV→grayscale conversion (Y-channel extraction), GREY passthrough
+- 8-bucket histogram dark frame filter (>95% pixels in bucket 0 → dark)
+- CLAHE contrast enhancement (~90 lines, implemented from scratch)
+- `Frame` struct: `data`, `width`, `height`, `timestamp`, `sequence`, `is_dark`
+- `visage test --device --frames` CLI command with device enumeration and PGM output
 
-**Key test:** Capture 10 frames from /dev/video2. Filter dark frames. Output grayscale
-images to /tmp/. No panics.
+**Key implementation change from plan:** Used `v4l = "0.14"` rather than raw `nix`
+ioctls. Safe abstraction, no loss of control — UVC extension unit ioctls for Step 5
+will be added directly via `AsRawFd`/`nix`. See ADR 001.
+
+**Hardware discovery:** `/dev/video2` outputs native GREY (not YUYV). Both formats
+now supported. GREY eliminates conversion overhead.
+
+**Test results:** 9/9 unit tests pass. Live capture: `/dev/video2` captures ~1 good
+frame per 30 attempts (expected — no IR emitter yet). `/dev/video0` exercises YUYV path.
+
+**ADR:** [docs/decisions/001-camera-capture-pipeline.md](../decisions/001-camera-capture-pipeline.md)
 
 ---
 
@@ -316,6 +325,19 @@ control = [1, 3, 3, 0, 0, 0, 0, 0, 0]
 **Key test:** `sudo apt install ./visage_*.deb` on clean Ubuntu 24.04 VM.
 Verify `sudo echo test` authenticates via face.
 `sudo apt remove visage` → password-only login still works.
+
+---
+
+## Implementation Progress
+
+| Step | Status | Date |
+|------|--------|------|
+| 1 — Camera capture pipeline | ✅ Complete | 2026-02-21 |
+| 2 — ONNX inference (SCRFD + ArcFace) | ⬜ Pending | — |
+| 3 — Daemon + D-Bus + SQLite | ⬜ Pending | — |
+| 4 — PAM module | ⬜ Pending | — |
+| 5 — IR emitter integration | ⬜ Pending | — |
+| 6 — Ubuntu packaging | ⬜ Pending | — |
 
 ---
 
