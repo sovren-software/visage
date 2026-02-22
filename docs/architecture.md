@@ -1,5 +1,16 @@
 # Visage Architecture
 
+## Implementation Status
+
+| Step | Component | Status |
+|------|-----------|--------|
+| 1 | Camera pipeline (visage-hw) | ✅ Complete |
+| 2 | ONNX inference pipeline (visage-core) | ✅ Complete |
+| 3 | Daemon (visaged) | Stub — blocked on Step 2 ✅ |
+| 4 | PAM module (pam-visage) | Stub |
+| 5 | IR emitter control | Stub |
+| 6 | Packaging (Ubuntu + NixOS) | Not started |
+
 ## Design Principles
 
 1. **Daemon owns hardware** — PAM module never touches the camera
@@ -39,25 +50,32 @@
 
 ### Pixel Format Handling
 
-The camera pipeline handles two V4L2 pixel formats:
+The camera pipeline handles three V4L2 pixel formats via the `PixelFormat` enum:
 
 | Format | Bytes/pixel | Source | Conversion |
 |--------|------------|--------|------------|
-| `GREY` | 1 | IR cameras (native grayscale) | None — used directly |
+| `GREY` | 1 | IR cameras (native 8-bit grayscale) | None — used directly |
 | `YUYV` | 2 | RGB webcams, some IR cameras | Y-channel extraction (every other byte) |
+| `Y16` | 2 | IR cameras (native 16-bit grayscale) | `(high << 8 \| low) >> 8` — top byte kept |
 
 Format is detected at `Camera::open()` and stored on the handle. The device
-driver selects the actual format after negotiation — we request YUYV but accept
-GREY. Any other format is rejected at open time.
+driver selects the actual format after negotiation — we request YUYV/GREY/Y16
+and dispatch based on what is negotiated. Unknown formats are rejected at open time
+with a clear error.
 
 **Discovery:** The ASUS Zenbook 14 UM3406HA IR camera (`/dev/video2`) outputs
 native GREY at 640×360. This is more efficient than YUYV — no conversion needed.
+
+**Y16 note:** Many IR cameras default to 16-bit depth output (Y16). The upper 8 bits
+are kept for face detection input (SCRFD trained on 8-bit images). The lower 8 bits
+carry sub-pixel IR intensity detail; these are discarded in v2 but will be relevant
+for liveness detection in v3. See ADR 003, §6 for details.
 
 ### Frame Processing
 
 Every captured frame goes through:
 
-1. **Format conversion** — YUYV→grayscale or GREY passthrough
+1. **Format conversion** — YUYV→grayscale, GREY passthrough, or Y16→u8 top byte extraction
 2. **Dark frame detection** — 8-bucket histogram; >95% of pixels in bucket 0
    (values 0–31) → frame marked dark and skipped
 3. **CLAHE contrast enhancement** — Applied to non-dark frames before return
@@ -101,6 +119,148 @@ Camera::list_devices() -> Vec<DeviceInfo>
 
 The `Frame` struct carries: `data` (grayscale pixels), `width`, `height`,
 `timestamp`, `sequence` (V4L2 buffer sequence number), `is_dark`.
+
+## ONNX Inference Pipeline (visage-core) — Implemented
+
+### Models
+
+| Model | File | Size | Purpose |
+|-------|------|------|---------|
+| SCRFD det_10g | `det_10g.onnx` | 16 MB | Face detection, 3-stride, 5-point landmarks |
+| ArcFace w600k_r50 | `w600k_r50.onnx` | 166 MB | 512-D face embeddings |
+
+Both models are loaded from `$XDG_DATA_HOME/visage/models/` (defaults to
+`~/.local/share/visage/models/`). See `models/README.md` for download instructions.
+
+### SCRFD Detector
+
+**Input:** Arbitrary-size grayscale frame → 640×640 NCHW float32 (letterboxed)
+
+**Preprocessing pipeline:**
+1. Bilinear letterbox resize to 640×640, preserving aspect ratio with 127.5-padded borders
+2. Grayscale → 3-channel replication (Y → [R=Y, G=Y, B=Y])
+3. Normalize: `(pixel - 127.5) / 128.0`
+4. Layout: NCHW `[1, 3, 640, 640]`
+
+**Output decoding:**
+- 9 tensors: 3 strides (8×, 16×, 32×) × 3 tensors (scores, bboxes, keypoints)
+- Tensor mapping is resolved by name at load time (`score_8`, `bbox_8`, `kps_8` pattern)
+  with positional fallback (`[(0,3,6), (1,4,7), (2,5,8)]`)
+- Each stride decodes anchor grid → (cx, cy, w, h) bounding boxes + 5 landmark pairs
+- Confidence threshold: 0.5 (configurable)
+- NMS threshold: 0.4 (IoU-based)
+- Output coordinates are denormalized back to original frame space
+
+**Named constants:**
+
+```rust
+const SCRFD_INPUT_SIZE: usize = 640;
+const SCRFD_MEAN: f32 = 127.5;
+const SCRFD_STD: f32 = 128.0;      // ← different from ArcFace
+const SCRFD_CONFIDENCE_THRESHOLD: f32 = 0.5;
+const SCRFD_NMS_THRESHOLD: f32 = 0.4;
+const SCRFD_STRIDES: [usize; 3] = [8, 16, 32];
+const SCRFD_ANCHORS_PER_CELL: usize = 2;
+```
+
+### Face Alignment
+
+Between detection and recognition, detected faces are aligned to a canonical 112×112
+position using the five detected facial landmarks.
+
+**Algorithm:** 4-DOF similarity transform (uniform scale + rotation + translation).
+
+1. Solve least-squares over 5 point pairs (10 equations, 4 unknowns) via Gaussian
+   elimination with partial pivoting → transform parameters [a, b, tx, ty]
+2. Build 2×3 affine matrix: `[[a, -b, tx], [b, a, ty]]`
+3. Invert the 2×2 rotation-scale part; apply bilinear interpolation to produce
+   a 112×112 aligned crop
+
+**Reference landmarks (ArcFace canonical space):**
+
+```
+left_eye:   (38.29, 51.70)
+right_eye:  (73.53, 51.50)
+nose:       (56.03, 71.74)
+left_mouth: (41.55, 92.37)
+right_mouth: (70.73, 92.20)
+```
+
+### ArcFace Recognizer
+
+**Input:** 112×112 grayscale aligned crop → embedding
+
+**Preprocessing:**
+1. Grayscale → 3-channel replication
+2. Normalize: `(pixel - 127.5) / 127.5` ← note: different STD from SCRFD
+3. Layout: NCHW `[1, 3, 112, 112]`
+
+**Output:**
+- Raw `[1, 512]` float32 tensor
+- L2-normalized immediately after inference: all stored embeddings are unit vectors
+- Tagged with `model_version: "w600k_r50"` for audit trail
+
+**Named constants:**
+
+```rust
+const ARCFACE_INPUT_SIZE: usize = 112;
+const ARCFACE_MEAN: f32 = 127.5;
+const ARCFACE_STD: f32 = 127.5;   // ← different from SCRFD
+const ARCFACE_EMBEDDING_DIM: usize = 512;
+```
+
+### Embedding Comparison
+
+```rust
+// Cosine similarity (primary API)
+embedding_a.similarity(&embedding_b) -> f32  // range [-1, 1]
+
+// Gallery matching
+CosineMatcher.compare(&probe, &gallery, threshold) -> MatchResult
+
+// Recommended thresholds (w600k_r50 empirical)
+// 0.45 → ~0.01% FAR (strict)
+// 0.40 → ~0.1% FAR  (balanced)
+```
+
+**Security property:** Both `similarity()` and `CosineMatcher::compare()` are constant-time:
+all dimensions / all gallery entries are always processed. No early exit that could leak
+similarity values or gallery size through timing.
+
+### Public API Surface
+
+```rust
+// Detector
+FaceDetector::load(model_path: &str) -> Result<FaceDetector, DetectorError>
+FaceDetector::detect(&mut self, frame: &[u8], width: u32, height: u32)
+    -> Result<Vec<BoundingBox>, DetectorError>
+
+// Recognizer
+FaceRecognizer::load(model_path: &str) -> Result<FaceRecognizer, RecognizerError>
+FaceRecognizer::extract(&mut self, frame: &[u8], width: u32, height: u32, face: &BoundingBox)
+    -> Result<Embedding, RecognizerError>
+
+// Matching
+CosineMatcher.compare(&probe: &Embedding, gallery: &[FaceModel], threshold: f32)
+    -> MatchResult
+
+// Alignment (low-level, used internally)
+alignment::align_face(frame: &[u8], width: u32, height: u32, landmarks: &[(f32,f32); 5])
+    -> Vec<u8>  // 112×112 grayscale crop
+
+// Model paths
+visage_core::default_model_dir() -> PathBuf  // $XDG_DATA_HOME/visage/models
+```
+
+### Known Limitations (v2)
+
+- **CPU-only inference.** No CUDA/Vulkan execution providers. ~60-80ms total auth latency.
+- **Anti-spoofing is passive.** IR + emitter provides passive liveness; no active detection.
+- **No integration test suite.** Unit tests (36) require no models. End-to-end tests need
+  downloaded ONNX files and are not yet gated behind `--features integration`.
+- **No load-time sanity check.** Model compatibility is verified on first inference, not at load.
+
+See ADR 003 for full decision log, rationale, and v3 migration paths.
 
 ## Security Model
 
