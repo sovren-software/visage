@@ -75,11 +75,17 @@ not configured.
 
 ### 8. Client-side D-Bus timeout: 3 seconds
 
-**Decision:** PAM module sets a 3-second `call_timeout` on the zbus proxy builder.
+**Decision:** PAM module sets a 3-second `method_timeout` via
+`zbus::blocking::connection::Builder::method_timeout()` — applied at connection creation,
+not on the proxy.
 
 **Rationale:** Most critical safety feature. Without it, a hung daemon blocks sudo for 25+
 seconds (D-Bus default timeout). 3 seconds is enough for normal verification (~80ms) but
 short enough that users perceive a quick fallback to password.
+
+**Implementation note:** zbus 5 exposes `method_timeout` on the connection builder, not the
+proxy builder. The timeout applies to all method calls on that connection, which is correct
+since the PAM module makes exactly one call per authentication attempt.
 
 ## Deferred to v3
 
@@ -101,9 +107,64 @@ short enough that users perceive a quick fallback to password.
 /usr/share/doc/visage/README.md               — documentation
 ```
 
+## Trade-offs
+
+| Decision | Benefit | Cost |
+|----------|---------|------|
+| Daemon as root | Avoids udev/group complexity | Root process is a higher-value attack target |
+| Models via `visage setup` | Offline-safe install; user controls 182MB download | Extra manual step after install |
+| No dedicated service user | Simpler packaging | Weaker isolation than fprintd's dedicated uid |
+| root-only D-Bus mutations | Easy to implement | `visage list` requires sudo; inconvenient for scripting |
+| 3-second PAM timeout | Login never hangs | Face match has 3s total budget (not just inference time) |
+| syslog via libc FFI | No extra crate deps | Raw FFI, no structured logging fields |
+
+## Drawbacks and Known Limitations
+
+1. **No apt-get install from a PPA.** Users must build the `.deb` from source with
+   `cargo build --release --workspace && cargo deb -p visaged`. There is no Launchpad PPA
+   or published release asset yet.
+
+2. **No integration test of the full install lifecycle.** The `.deb` has been constructed
+   and inspected but has not been tested via `sudo apt install` on a clean Ubuntu 24.04 VM.
+   The acceptance criteria remain unverified.
+
+3. **Model checksums are for HuggingFace's buffalo_l.** If InsightFace publishes updated
+   model weights, the checksums in `setup.rs` will reject them. Users must build from source
+   to update.
+
+4. **`MemoryDenyWriteExecute=false` allows W+X pages.** Required for ONNX Runtime's JIT
+   execution provider. This is a meaningful systemd hardening regression; the alternative
+   would be to use the ORT CPU provider exclusively and disable JIT, which may be slower
+   but would allow restoring this restriction.
+
+5. **Daemon restarts require face re-enrollment if database is purged.** `apt purge`
+   removes `/var/lib/visage/` including all enrolled models. Users must re-enroll after
+   purge.
+
+6. **PAM conversation message requires terminal display.** The "Visage: face recognized"
+   feedback only appears if the PAM application (sudo, gdm, etc.) calls the conversation
+   function. SSH sessions and headless contexts may not display it.
+
+7. **No Debian changelog or proper package versioning.** The `.deb` uses workspace version
+   0.1.0 directly. A `debian/changelog` file with proper version history is absent — needed
+   for PPA submission.
+
+## Remaining Work to Fully Complete
+
+The following must be done before v0.1 can be publicly announced:
+
+1. **End-to-end install test on Ubuntu 24.04 VM** — verify the full `apt install → visage setup → enroll → sudo` flow
+2. **GitHub release asset** — build `.deb` in CI and attach to the v0.1 tag
+3. **PPA or release binary** — users cannot currently install without building from source
+4. **Launchpad PPA** (or GitHub Actions `.deb` build) — prerequisite for Ubuntu distribution strategy
+5. **`systemd-tmpfiles.d` entry** — idiomatic alternative to `postinst mkdir` for `/var/lib/visage`
+6. **Debian changelog** — required for PPA; track version changes
+7. **`preinst` guard** — check if `pam-auth-update` is available before running it
+8. **NixOS package** — AEGIS overlay integration per distribution-strategy.md Tier 1
+
 ## Consequences
 
-- Users install with a single `apt install` command
+- Users with build tooling can install with a single `apt install ./visage_*.deb`
 - PAM configuration is automatic via `pam-auth-update`
 - Clean removal restores password-only auth
 - Model download is explicit and offline-safe

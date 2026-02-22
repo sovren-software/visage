@@ -70,15 +70,22 @@ alternative.
 
 Deliverable: `packaging/rpm/visage.spec`
 
-### Tier 2: Ship With v0.2
+### Tier 1.5: Partially Complete — Ubuntu .deb (not yet PPA)
 
-**4. Ubuntu PPA**
+**4. Ubuntu .deb Package**
 
-Highest Linux desktop install base. Required for mainstream adoption. The Ubuntu
-packaging story is more complex (pam-auth-update integration, launchpad), so it
-follows the simpler distributions.
+The `.deb` package structure is complete as of Step 6 (2026-02-22). This includes:
+- `pam-auth-update` integration (automatic PAM wiring)
+- `visage setup` for model download (~182MB, SHA-256 verified)
+- Hardened `visaged.service` systemd unit
+- Proper install/remove/purge lifecycle via maintainer scripts
 
-Deliverable: `packaging/debian/` (already scaffolded)
+**What remains for full Tier 2 completion:**
+- End-to-end install test on clean Ubuntu 24.04 VM (not yet done)
+- GitHub release asset built in CI
+- Launchpad PPA for `apt install visage` without building from source
+
+Deliverable: `packaging/debian/` ✅ complete; PPA ⬜ pending
 
 **5. GitHub Releases with Pre-Built Binaries**
 

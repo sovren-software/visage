@@ -65,7 +65,7 @@ Full checklist: [architecture-review-and-roadmap.md](research/architecture-revie
 | ✅ 3 | `visaged` | Daemon — D-Bus, SQLite, session bus, persistent model store |
 | ✅ 4 | `pam-visage` | PAM module — PAM_IGNORE fallback, system bus |
 | ✅ 5 | `visage-hw` | IR emitter — UVC extension unit control, quirks DB |
-| ⬜ 6 | Packaging | Ubuntu .deb, pam-auth-update, systemd hardening |
+| ✅ 6 | Packaging | Ubuntu .deb, pam-auth-update, systemd hardening, `visage setup` |
 
 ---
 
@@ -210,3 +210,7 @@ The PAM module shipped in v2 will work with v3 without modification. It calls `V
 | [decisions/002-onnx-inference-kb-and-blocker-resolution.md](decisions/002-onnx-inference-kb-and-blocker-resolution.md) | ADR: Step 2 — inference KB and blocker resolution |
 | [decisions/003-daemon-integration.md](decisions/003-daemon-integration.md) | ADR: Step 3 — daemon architecture decisions |
 | [decisions/004-inference-pipeline-implementation.md](decisions/004-inference-pipeline-implementation.md) | ADR: Step 4 — ONNX pipeline implementation details |
+| [decisions/005-pam-system-bus-migration.md](decisions/005-pam-system-bus-migration.md) | ADR: Step 4 — PAM module and system bus migration |
+| [decisions/006-ir-emitter-integration.md](decisions/006-ir-emitter-integration.md) | ADR: Step 5 — IR emitter integration |
+| [decisions/007-ubuntu-packaging.md](decisions/007-ubuntu-packaging.md) | ADR: Step 6 — Ubuntu packaging and system integration |
+| [marketing/distribution-strategy.md](marketing/distribution-strategy.md) | Distribution priority — why packages precede features |

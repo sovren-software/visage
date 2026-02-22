@@ -312,19 +312,31 @@ control = [1, 3, 3, 0, 0, 0, 0, 0, 0]
 
 ---
 
-### Step 6: Ubuntu Packaging
+### Step 6: Ubuntu Packaging (Complete — 2026-02-22)
 
-**What to build:**
-- `.deb` package via `cargo-deb`
-- `/usr/share/pam-configs/visage` (pam-auth-update profile)
-- `postinst`: calls `pam-auth-update --package`, creates `/var/lib/visage`
-- `prerm`: calls `pam-auth-update --remove`
-- `visage-models` download script in postinst
-- README: Ubuntu install/remove instructions
+**What was built:**
+- `.deb` package via `cargo-deb` — configured in `crates/visaged/Cargo.toml`
+- `packaging/systemd/visaged.service` — hardened unit (ProtectSystem=strict, DeviceAllow,
+  CapabilityBoundingSet empty, MemoryDenyWriteExecute=false for ONNX Runtime JIT)
+- `packaging/debian/pam-auth-update` — pam-configs profile, priority 900, `[success=end default=ignore]`
+- `packaging/debian/postinst` — creates `/var/lib/visage`, runs `pam-auth-update --package`, enables service
+- `packaging/debian/prerm` — stops service, runs `pam-auth-update --remove`
+- `packaging/debian/postrm` — purges `/var/lib/visage` on `apt purge`
+- `packaging/dbus/org.freedesktop.Visage1.conf` — restricts Enroll/RemoveModel/ListModels to root
+- `visage setup` CLI subcommand — downloads ONNX models (~182MB) with SHA-256 verification;
+  writes to `/var/lib/visage/models` (root) or XDG data dir (user)
+- PAM module hardening: 3-second call timeout, syslog at LOG_AUTHPRIV, PAM_TEXT_INFO conversation
+
+**Design decision change from plan:** Model download is `visage setup` (on-demand) rather than
+postinst download. This makes offline installs work and gives users control over when 182MB
+downloads happen.
 
 **Key test:** `sudo apt install ./visage_*.deb` on clean Ubuntu 24.04 VM.
 Verify `sudo echo test` authenticates via face.
 `sudo apt remove visage` → password-only login still works.
+
+**Status:** `.deb` structure complete; end-to-end install test on Ubuntu 24.04 pending.
+See ADR 007 for full decisions, trade-offs, and remaining work.
 
 ---
 
