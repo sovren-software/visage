@@ -13,7 +13,7 @@ analogous to Windows Hello. Built in Rust for memory safety in the authenticatio
 | 2 | ONNX inference — SCRFD + ArcFace (`visage-core`) | **Complete** |
 | 3 | Daemon + D-Bus + SQLite model store (`visaged`) | **Complete** |
 | 4 | PAM module + system bus migration (`pam-visage`) | **Complete** |
-| 5 | IR emitter integration (`visage-hw`) | Pending |
+| 5 | IR emitter integration (`visage-hw`) | **Complete** |
 | 6 | Ubuntu packaging | Pending |
 
 Not yet suitable for production use.
@@ -68,6 +68,19 @@ visage remove <model-id>
 visage status
 ```
 
+### Hardware discovery
+
+```bash
+# List cameras, VID:PID, and IR emitter quirk status
+visage discover
+```
+
+Output example:
+```
+/dev/video2  VID=0x04f2 PID=0xb6d9  quirk: ASUS Zenbook 14 UM3406HA IR Camera ✓
+/dev/video4  VID=0x0bda PID=0x5850  no quirk (VID=0x0bda PID=0x5850)
+```
+
 ### Camera diagnostics
 
 ```bash
@@ -78,10 +91,9 @@ visage test
 visage test --device /dev/video0 --frames 5
 ```
 
-Captures frames, applies dark-frame filtering and CLAHE contrast enhancement,
-saves grayscale PGM files to `/tmp/visage-test/`, and prints a summary.
-
-**Note:** Most frames will be dark until the IR emitter is activated (Step 5).
+Captures frames with the IR emitter active, applies dark-frame filtering and CLAHE
+contrast enhancement, saves grayscale PGM files to `/tmp/visage-test/`, and prints
+a summary. Requires the daemon to be running for emitter activation.
 
 ## Hardware Support
 
@@ -104,8 +116,9 @@ See [contrib/hw/README.md](contrib/hw/README.md) for the contribution process.
 - [Step 1 ADR — Camera Capture Pipeline](docs/decisions/001-camera-capture-pipeline.md)
 - [Step 2 ADR — ONNX Inference KB and Blocker Resolution](docs/decisions/002-onnx-inference-kb-and-blocker-resolution.md)
 - [Step 3 ADR — Daemon Integration Architecture](docs/decisions/003-daemon-integration.md)
-- [Step 2 ADR — ONNX Inference Pipeline Implementation](docs/decisions/004-inference-pipeline-implementation.md)
+- [Step 4 ADR — ONNX Inference Pipeline Implementation](docs/decisions/004-inference-pipeline-implementation.md)
 - [Step 4 ADR — PAM Module and System Bus Migration](docs/decisions/005-pam-system-bus-migration.md)
+- [Step 5 ADR — IR Emitter Integration](docs/decisions/006-ir-emitter-integration.md)
 
 ## License
 

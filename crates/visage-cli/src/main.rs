@@ -56,6 +56,8 @@ enum Commands {
     },
     /// Show daemon status
     Status,
+    /// List cameras and their IR emitter quirk status
+    Discover,
     /// Run camera diagnostics
     Test {
         /// Camera device path
@@ -169,6 +171,9 @@ async fn main() -> Result<()> {
                 }
             }
         }
+        Commands::Discover => {
+            cmd_discover();
+        }
         Commands::Status => {
             let proxy = connect_proxy().await?;
             match proxy.status().await {
@@ -199,6 +204,43 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn cmd_discover() {
+    use visage_hw::quirks::{get_usb_ids, lookup_quirk};
+
+    let mut entries: Vec<_> = std::fs::read_dir("/dev")
+        .expect("cannot read /dev")
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_name()
+                .to_str()
+                .map(|n| n.starts_with("video"))
+                .unwrap_or(false)
+        })
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+
+    if entries.is_empty() {
+        println!("No /dev/video* devices found.");
+        return;
+    }
+
+    for entry in entries {
+        let path = format!("/dev/{}", entry.file_name().to_string_lossy());
+        match get_usb_ids(&path) {
+            Some((vid, pid)) => {
+                let quirk_status = match lookup_quirk(vid, pid) {
+                    Some(q) => format!("quirk: {} \u{2713}", q.device.name),
+                    None => format!("no quirk (VID={vid:#06x} PID={pid:#06x})"),
+                };
+                println!("{path}  VID={vid:#06x} PID={pid:#06x}  {quirk_status}");
+            }
+            None => {
+                println!("{path}  (not USB or no sysfs entry)");
+            }
+        }
+    }
 }
 
 fn run_camera_test(device_path: &str, frame_count: usize) -> Result<()> {

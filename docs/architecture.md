@@ -8,7 +8,7 @@
 | 2 | ONNX inference pipeline (visage-core) | ✅ Complete |
 | 3 | Daemon (visaged) + CLI (visage-cli) | ✅ Complete |
 | 4 | PAM module (pam-visage) + system bus migration | ✅ Complete |
-| 5 | IR emitter control | Stub |
+| 5 | IR emitter control (`visage-hw`) | ✅ Complete |
 | 6 | Packaging (Ubuntu + NixOS) | Not started |
 
 ## Design Principles
@@ -91,14 +91,15 @@ Every captured frame goes through:
 CLAHE is implemented from scratch in ~90 lines (`frame::clahe_enhance`). No
 additional image processing crate dependency.
 
-### Dark Frame Behavior (Current)
+### Dark Frame Behavior
 
-Without the IR emitter active, most frames from `/dev/video2` are dark.
-In testing, 29 of 30 capture attempts were rejected. One good frame with
-brightness ~44.8/255 passed through.
+Without IR illumination, most frames from `/dev/video2` are dark.
+In testing before Step 5, 29 of 30 capture attempts were rejected.
 
-This is expected and correct. The IR emitter (Step 5) will illuminate the scene,
-yielding high frame pass rates during authentication attempts.
+With the IR emitter active (Step 5), the emitter fires for 100ms before capture,
+allowing AGC to stabilise. Frame pass rates are expected to be near 100% during
+authentication attempts. The dark-frame filter remains in place as a fallback if
+the emitter is unavailable.
 
 ### Public API Surface
 
@@ -119,6 +120,109 @@ Camera::list_devices() -> Vec<DeviceInfo>
 
 The `Frame` struct carries: `data` (grayscale pixels), `width`, `height`,
 `timestamp`, `sequence` (V4L2 buffer sequence number), `is_dark`.
+
+## IR Emitter (visage-hw) — Implemented
+
+The IR emitter driver is embedded in `visage-hw` and activated by the engine thread
+around each capture sequence. No external dependency (`linux-enable-ir-emitter`
+is not required at runtime).
+
+### Quirk Database
+
+Camera-specific UVC control parameters are stored in `contrib/hw/*.toml` and
+embedded at compile time via `include_str!`. The database is initialised once into
+a `OnceLock<Vec<QuirkFile>>` at first access.
+
+**Currently supported cameras:**
+
+| File | Camera | VID | PID |
+|------|--------|-----|-----|
+| `04f2-b6d9.toml` | ASUS Zenbook 14 UM3406HA | `0x04F2` | `0xB6D9` |
+
+### Device Discovery
+
+`get_usb_ids(device_path)` resolves `/dev/videoN` to a USB VID:PID by walking the
+sysfs path:
+
+```
+/sys/class/video4linux/videoN/device → (symlink) → USB interface dir
+                                        → parent    → USB device dir
+                                        → idVendor, idProduct
+```
+
+Returns `None` for non-USB devices or when sysfs is unavailable.
+
+### UVC Extension Unit Control
+
+IR emitters on Windows Hello-compatible cameras are controlled via the UVC
+extension unit (`UVCIOC_CTRL_QUERY`) ioctl:
+
+```
+UVCIOC_CTRL_QUERY = _IOWR('u', 0x21, 16) = 0xC010_7521
+```
+
+`UvcXuControlQuery` mirrors `struct uvc_xu_control_query` from `<linux/uvcvideo.h>`.
+A compile-time size assertion (`assert!(size_of::<UvcXuControlQuery>() == 16)`)
+verifies the ABI at build time.
+
+A separate read+write fd is opened for each ioctl call (no `AsRawFd` dependency
+on `Camera`).
+
+### Activation Lifecycle
+
+```
+engine thread
+├── activate_emitter()  ← SET_CUR: send control_bytes
+│   └── sleep 100ms     ← AGC stabilisation
+├── camera.capture_frames(n)
+└── deactivate_emitter() ← SET_CUR: send zeros
+```
+
+**Failure model:** Emitter errors are warnings only. Capture always proceeds,
+falling back to ambient light if the emitter is unavailable (device not found,
+permission denied, no quirk). The daemon and PAM module never surface emitter
+errors to callers.
+
+### Public API
+
+```rust
+// Construct emitter for a device (None if no quirk)
+IrEmitter::for_device(device_path: &str) -> Option<IrEmitter>
+
+// Activate / deactivate
+IrEmitter::activate(&self) -> Result<(), EmitterError>
+IrEmitter::deactivate(&self) -> Result<(), EmitterError>
+
+// Quirk database
+lookup_quirk(vid: u16, pid: u16) -> Option<&'static CameraQuirk>
+list_quirks() -> &'static [CameraQuirk]
+get_usb_ids(device_path: &str) -> Option<(u16, u16)>
+```
+
+### CLI: `visage discover`
+
+Lists `/dev/video*` devices with their sysfs VID:PID and quirk status.
+Useful for hardware support debugging before filing a quirk contribution.
+
+```
+/dev/video2  VID=0x04f2 PID=0xb6d9  quirk: ASUS Zenbook 14 UM3406HA IR Camera ✓
+/dev/video4  VID=0x0bda PID=0x5850  no quirk (VID=0x0bda PID=0x5850)
+```
+
+### Known Limitations (Step 5)
+
+1. **One compiled-in quirk.** Adding a new camera requires a new `contrib/hw/*.toml`
+   file and a rebuild. A runtime override directory (`/usr/share/visage/quirks/`) is
+   deferred to Step 6.
+
+2. **No udev rule.** Read+write access to `/dev/videoN` requires root or the `video`
+   group. A udev rule granting `visaged` access is deferred to Step 6.
+
+3. **100ms AGC warm-up is hardcoded.** `VISAGE_EMITTER_WARM_UP_MS` is deferred to Step 6.
+
+4. **`visage discover --probe` (test activation pulse) deferred to Step 6.**
+
+See [ADR 006](decisions/006-ir-emitter-integration.md) for full decision log.
 
 ## ONNX Inference Pipeline (visage-core) — Implemented
 
@@ -278,6 +382,7 @@ All settings are overridable via `VISAGE_*` environment variables. Defaults:
 | Warmup frames | `4` | `VISAGE_WARMUP_FRAMES` |
 | Frames per verify | `3` | `VISAGE_FRAMES_PER_VERIFY` |
 | Frames per enroll | `5` | `VISAGE_FRAMES_PER_ENROLL` |
+| IR emitter enabled | `true` | `VISAGE_EMITTER_ENABLED` (set to `0` to disable) |
 
 ### Startup Sequence (Fail-Fast)
 
@@ -285,10 +390,12 @@ All settings are overridable via `VISAGE_*` environment variables. Defaults:
 1. Init tracing (RUST_LOG)
 2. Load Config from env vars
 3. spawn_engine() — opens camera + loads both ONNX models synchronously
+   IR emitter: probe sysfs VID:PID → look up quirk → log found/not-found (never fatal)
    Warmup: discard N frames for camera AGC/AE stabilization
    Fail here → daemon exits; error visible in journal
 4. FaceModelStore::open() — creates SQLite DB + runs migrations if needed
-5. zbus session bus: register org.freedesktop.Visage1 at /org/freedesktop/Visage1
+5. zbus SYSTEM bus (or session bus if VISAGE_SESSION_BUS=1):
+   register org.freedesktop.Visage1 at /org/freedesktop/Visage1
 6. Wait for SIGINT/SIGTERM
 ```
 
@@ -324,18 +431,6 @@ defaults — no migration needed when pose-indexed enrollment is added.
 
 **Cross-user protection:** Every mutation includes `WHERE user = ?`. `RemoveModel` returns
 `false` (not an error) if the model belongs to a different user.
-
-### Startup Sequence (Step 4 — System Bus)
-
-```
-1. Init tracing (RUST_LOG)
-2. Load Config from env vars
-3. spawn_engine() — opens camera + loads both ONNX models synchronously
-4. FaceModelStore::open() — creates SQLite DB + runs migrations if needed
-5. zbus SYSTEM bus (or session bus if VISAGE_SESSION_BUS=1): register
-   org.freedesktop.Visage1 at /org/freedesktop/Visage1
-6. Log which bus is active, wait for SIGINT/SIGTERM
-```
 
 The system bus requires:
 - D-Bus policy file installed at `/usr/share/dbus-1/system.d/org.freedesktop.Visage1.conf`
@@ -418,9 +513,7 @@ su -c "vim /etc/pam.d/sudo"
 3. **Development-only PAM config.** Manual `/etc/pam.d/sudo` edit. `pam-auth-update`
    integration is Step 6 (packaging).
 
-4. **IR emitter not active.** Testing requires ambient light. Step 5 resolves this.
-
-5. **`eprintln!` logging.** Messages appear in the `sudo` terminal. Production syslog
+4. **`eprintln!` logging.** Messages appear in the `sudo` terminal. Production syslog
    (`LOG_AUTHPRIV`) is deferred to Step 6.
 
 See [ADR 005](decisions/005-pam-system-bus-migration.md) for full decision log.

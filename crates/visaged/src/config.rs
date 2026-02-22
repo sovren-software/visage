@@ -18,6 +18,8 @@ pub struct Config {
     pub frames_per_verify: usize,
     /// Number of frames to capture per enroll attempt.
     pub frames_per_enroll: usize,
+    /// Whether to activate the IR emitter around each capture sequence.
+    pub emitter_enabled: bool,
 }
 
 impl Config {
@@ -49,6 +51,9 @@ impl Config {
             warmup_frames: env_usize("VISAGE_WARMUP_FRAMES", 4),
             frames_per_verify: env_usize("VISAGE_FRAMES_PER_VERIFY", 3),
             frames_per_enroll: env_usize("VISAGE_FRAMES_PER_ENROLL", 5),
+            emitter_enabled: std::env::var("VISAGE_EMITTER_ENABLED")
+                .map(|v| v != "0")
+                .unwrap_or(true),
         }
     }
 

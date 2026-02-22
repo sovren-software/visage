@@ -63,8 +63,8 @@ Full checklist: [architecture-review-and-roadmap.md](research/architecture-revie
 | ✅ 1 | `visage-hw` | Camera capture — V4L2, CLAHE, dark frame filtering |
 | ✅ 2 | `visage-core` | ONNX inference — SCRFD detection + ArcFace recognition |
 | ✅ 3 | `visaged` | Daemon — D-Bus, SQLite, session bus, persistent model store |
-| ⬜ 4 | `pam-visage` | PAM module — 3s timeout, PAM_IGNORE fallback |
-| ⬜ 5 | `visage-hw` | IR emitter — UVC extension unit control |
+| ✅ 4 | `pam-visage` | PAM module — PAM_IGNORE fallback, system bus |
+| ✅ 5 | `visage-hw` | IR emitter — UVC extension unit control, quirks DB |
 | ⬜ 6 | Packaging | Ubuntu .deb, pam-auth-update, systemd hardening |
 
 ---

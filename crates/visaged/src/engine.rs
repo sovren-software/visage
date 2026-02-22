@@ -1,7 +1,7 @@
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use visage_core::{CosineMatcher, Embedding, FaceModel, MatchResult, Matcher};
-use visage_hw::Camera;
+use visage_hw::{Camera, IrEmitter};
 
 #[derive(Error, Debug)]
 pub enum EngineError {
@@ -96,6 +96,7 @@ pub fn spawn_engine(
     scrfd_path: &str,
     arcface_path: &str,
     warmup_frames: usize,
+    emitter_enabled: bool,
 ) -> Result<EngineHandle, EngineError> {
     // Open camera and load models synchronously (fail-fast)
     let camera = Camera::open(camera_device)?;
@@ -112,6 +113,26 @@ pub fn spawn_engine(
 
     let mut recognizer = visage_core::FaceRecognizer::load(arcface_path)?;
     tracing::info!(path = arcface_path, "ArcFace recognizer loaded");
+
+    // Probe for IR emitter quirk
+    let emitter: Option<IrEmitter> = if emitter_enabled {
+        match IrEmitter::for_device(camera_device) {
+            Some(e) => {
+                tracing::info!(name = %e.name(), device = %e.device_path(), "IR emitter found");
+                Some(e)
+            }
+            None => {
+                tracing::warn!(
+                    device = camera_device,
+                    "no IR emitter quirk for device; proceeding without illumination"
+                );
+                None
+            }
+        }
+    } else {
+        tracing::info!("IR emitter disabled via VISAGE_EMITTER_ENABLED=0");
+        None
+    };
 
     // Discard warmup frames for camera AGC/AE stabilization
     if warmup_frames > 0 {
@@ -133,7 +154,8 @@ pub fn spawn_engine(
                         frames_count,
                         reply,
                     } => {
-                        let result = run_enroll(&camera, &mut detector, &mut recognizer, frames_count);
+                        let result =
+                            run_enroll(&camera, &emitter, &mut detector, &mut recognizer, frames_count);
                         let _ = reply.send(result);
                     }
                     EngineRequest::Verify {
@@ -144,6 +166,7 @@ pub fn spawn_engine(
                     } => {
                         let result = run_verify(
                             &camera,
+                            &emitter,
                             &mut detector,
                             &mut recognizer,
                             &gallery,
@@ -161,14 +184,42 @@ pub fn spawn_engine(
     Ok(EngineHandle { tx })
 }
 
+/// Activate the IR emitter and sleep briefly for AGC stabilisation.
+/// Logs a warning on failure but never propagates the error — capture
+/// continues with ambient light.
+fn activate_emitter(emitter: &Option<IrEmitter>) {
+    if let Some(e) = emitter {
+        if let Err(err) = e.activate() {
+            tracing::warn!(error = %err, "IR emitter activate failed; continuing without illumination");
+        } else {
+            // Allow AGC (auto gain control) to stabilise before capture.
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+}
+
+/// Deactivate the IR emitter. Logs a warning on failure.
+fn deactivate_emitter(emitter: &Option<IrEmitter>) {
+    if let Some(e) = emitter {
+        if let Err(err) = e.deactivate() {
+            tracing::warn!(error = %err, "IR emitter deactivate failed");
+        }
+    }
+}
+
 /// Capture frames, pick the best face (highest confidence), extract embedding.
 fn run_enroll(
     camera: &Camera,
+    emitter: &Option<IrEmitter>,
     detector: &mut visage_core::FaceDetector,
     recognizer: &mut visage_core::FaceRecognizer,
     frames_count: usize,
 ) -> Result<EnrollResult, EngineError> {
-    let (frames, dark_skipped) = camera.capture_frames(frames_count)?;
+    activate_emitter(emitter);
+    let capture_result = camera.capture_frames(frames_count);
+    deactivate_emitter(emitter);
+
+    let (frames, dark_skipped) = capture_result?;
     tracing::debug!(
         captured = frames.len(),
         dark_skipped,
@@ -216,13 +267,18 @@ fn run_enroll(
 /// Uses the best match across all captured frames.
 fn run_verify(
     camera: &Camera,
+    emitter: &Option<IrEmitter>,
     detector: &mut visage_core::FaceDetector,
     recognizer: &mut visage_core::FaceRecognizer,
     gallery: &[FaceModel],
     threshold: f32,
     frames_count: usize,
 ) -> Result<VerifyResult, EngineError> {
-    let (frames, dark_skipped) = camera.capture_frames(frames_count)?;
+    activate_emitter(emitter);
+    let capture_result = camera.capture_frames(frames_count);
+    deactivate_emitter(emitter);
+
+    let (frames, dark_skipped) = capture_result?;
     tracing::debug!(
         captured = frames.len(),
         dark_skipped,

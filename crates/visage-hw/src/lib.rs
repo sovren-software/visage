@@ -10,3 +10,5 @@ pub mod quirks;
 
 pub use camera::{Camera, CameraError, PixelFormat};
 pub use frame::Frame;
+pub use ir_emitter::{EmitterError, IrEmitter};
+pub use quirks::CameraQuirk;

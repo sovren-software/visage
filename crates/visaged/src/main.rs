@@ -38,6 +38,7 @@ async fn main() -> Result<()> {
         &config.scrfd_model_path(),
         &config.arcface_model_path(),
         config.warmup_frames,
+        config.emitter_enabled,
     )?;
     tracing::info!("engine started");
 
