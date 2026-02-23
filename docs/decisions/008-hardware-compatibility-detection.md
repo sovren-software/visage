@@ -2,7 +2,7 @@
 
 **Date:** 2026-02-22
 **Status:** Accepted
-**Deciders:** Aigusta Labs
+**Deciders:** Sovren Software
 
 ---
 

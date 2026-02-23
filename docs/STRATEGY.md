@@ -78,9 +78,13 @@ v3 is a consequence of v2's design quality, not a prerequisite for v2's success.
 
 ### v0.2 Success Criteria (Public Launch Gate)
 
-`sudo echo test` authenticates via face in <500ms with >95% reliability,
-falls back to password cleanly on timeout or failure, and can be installed and removed
-on Ubuntu 24.04 without breaking authentication.
+Visage authenticates via face with >95% reliability and falls back to password cleanly
+on timeout or failure. A published Howdy comparison benchmark demonstrates the improvement
+concretely on matched hardware. Distribution packages (AUR, NixOS, COPR) are available
+so users can install on Arch and Fedora — not just Ubuntu.
+
+Note: Visage at ~1.4s on CPU/USB webcam already beats Howdy's 2-3s cold-start (subprocess
+spawn per attempt). Sub-500ms is a v0.3 hardware-acceleration goal, not a v0.2 gate.
 
 Full checklist: [architecture-review-and-roadmap.md](research/architecture-review-and-roadmap.md#v02-release-gate)
 

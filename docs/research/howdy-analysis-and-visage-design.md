@@ -2,10 +2,10 @@
 
 ## Lessons from Howdy, and a Path to Order-of-Magnitude Improvement
 
-**Authors:** Aigusta Labs
+**Authors:** Sovren Software
 **Date:** 2026-02-21
 **Status:** Living document — updated as implementation progresses
-**Repository:** https://github.com/Aigusta-Labs/visage
+**Repository:** https://github.com/sovren-software/visage
 
 ---
 

@@ -139,7 +139,7 @@ Specifically, these are **out of scope for Visage**:
 
 | Feature | Why out of scope |
 |---------|-----------------|
-| Gesture or motion tracking | Planned for Aegis Linux desktop layer — not an auth primitive |
+| Gesture or motion tracking | Planned for Augmentum OS desktop layer — not an auth primitive |
 | Fingerprint authentication | Different hardware domain; fprintd already exists and is well-maintained |
 | Alternative biometrics (iris, voice, behavioral) | Separate evaluation required; voice is planned for a future multi-modal platform |
 | LLM or AI models in core crates | The authentication path is deterministic. Always. |
@@ -148,7 +148,7 @@ Specifically, these are **out of scope for Visage**:
 
 **Why document this explicitly:** The Linux community is generous with feature suggestions.
 These boundaries exist to keep Visage maintainable and security-auditable, not because the
-ideas are bad. If you want gestures or voice on Linux, watch the Aegis Linux project.
+ideas are bad. If you want gestures or voice on Linux, watch the [Augmentum OS](https://augmentum.computer) project.
 
 ---
 
@@ -156,9 +156,9 @@ ideas are bad. If you want gestures or voice on Linux, watch the Aegis Linux pro
 
 **v0.2 targets** (before public community launch, Summer 2026):
 
-- [ ] NixOS flake / overlay packaging
-- [ ] AUR PKGBUILD
-- [ ] Howdy vs Visage latency benchmark (matched hardware, published methodology)
+- [x] AUR PKGBUILD (`packaging/aur/`)
+- [x] NixOS derivation (`packaging/nix/`) — flake wiring pending
+- [ ] Howdy vs Visage benchmark (matched hardware, published methodology)
 - [ ] Active liveness detection (blink challenge — proof of concept)
 - [ ] Enroll quality scoring (reject blurry / dark / partial frames at capture time)
 - [ ] `visage discover --json` for structured output (gating requirement for v3 classifier)
@@ -193,7 +193,7 @@ Tests: `cargo test --workspace`. No new warnings.
 ## Getting started
 
 ```bash
-git clone https://github.com/aegis-systems/visage
+git clone https://github.com/sovren-software/visage
 cd visage
 
 # Check all crates compile
@@ -212,5 +212,5 @@ See [docs/hardware-compatibility.md](docs/hardware-compatibility.md) for camera 
 
 ---
 
-*Visage is the default face authentication layer for [Aegis Linux](https://aegis.computer),
+*Visage is the default face authentication layer for [Augmentum OS](https://augmentum.computer),
 shipping Summer 2026.*

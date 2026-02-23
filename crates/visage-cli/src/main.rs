@@ -275,7 +275,7 @@ fn cmd_discover() {
         eprintln!("  If your laptop has a separate USB IR camera, it may still appear above");
         eprintln!("  under a different /dev/videoN node with driver=uvcvideo.");
         eprintln!();
-        eprintln!("  See: https://github.com/Aigusta-Labs/visage/blob/main/docs/hardware-compatibility.md");
+        eprintln!("  See: https://github.com/sovren-software/visage/blob/main/docs/hardware-compatibility.md");
     }
 }
 
