@@ -1,15 +1,22 @@
 # Visage
 
-> **Visage is the default face authentication layer for [Aegis Linux](https://aegis.computer) — shipping Summer 2026.**
+**Linux face authentication via PAM — persistent daemon, IR camera support, ONNX inference.**
 
-A modern, secure biometric authentication framework for Linux.
+The Windows Hello equivalent for Linux. Visage authenticates `sudo`, login, and any
+PAM-gated service using your face — with sub-second response and no subprocess overhead.
 
-Visage provides IR camera-based face authentication for Linux systems via PAM,
-analogous to Windows Hello. Built in Rust for memory safety in the authentication path.
+> Built in Rust by [Sovren Software](https://sovren.software) as the authentication layer
+> for [Augmentum OS](https://augmentum.computer). Ships standalone on any Linux system.
 
-Unlike Howdy (Python subprocess per auth attempt, 2–3s cold start), Visage runs as
-a persistent daemon: the recognition pipeline is warm, camera ownership is stable,
-and authentication completes without subprocess overhead.
+---
+
+Visage runs as a persistent daemon: SCRFD face detection and ArcFace recognition are loaded
+once at startup via ONNX Runtime, and camera ownership is held across auth requests. Compare
+to [Howdy](https://github.com/boltgolt/howdy) — Python subprocess per auth attempt, 2–3s
+cold start, no IR emitter integration. Visage completes a warm recognition in ~200ms.
+
+Built in Rust for memory safety throughout the authentication path. Integrates via standard
+Linux-PAM — no kernel patches, no modified sudo.
 
 ## Status
 
