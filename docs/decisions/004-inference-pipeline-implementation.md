@@ -465,7 +465,7 @@ The `IrEmitter` stub exists. It must implement UVC control byte probing:
 | Task | Notes |
 |------|-------|
 | Ubuntu `.deb` package (systemd service + PAM config) | Priority: Ubuntu 24.04 LTS |
-| NixOS derivation in `aegis-os` | `onnxruntime` must be linked, not downloaded |
+| NixOS derivation in `augmentum-os` | `onnxruntime` must be linked, not downloaded |
 | Model download helper (checksums) | `sha256sum` verification for both ONNX files |
 | Integration test suite (`--features integration`) | Skips gracefully when models absent |
 | `visage enroll` / `visage verify` CLI subcommands | End-to-end from command line |

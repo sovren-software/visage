@@ -161,7 +161,7 @@ The following must be done before v0.1 can be publicly announced:
 5. **`systemd-tmpfiles.d` entry** — idiomatic alternative to `postinst mkdir` for `/var/lib/visage`
 6. **Debian changelog** — required for PPA; track version changes
 7. **`preinst` guard** — check if `pam-auth-update` is available before running it
-8. **NixOS package** — AEGIS overlay integration per distribution-strategy.md Tier 1
+8. **NixOS package** — Augmentum OS overlay integration (Tier 1 in distribution strategy)
 
 ## Consequences
 

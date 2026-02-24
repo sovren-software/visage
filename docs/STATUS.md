@@ -106,7 +106,7 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
    - README hardware section rewritten with UVC/IPU6 tier table
    - ADR 008 documents decision rationale and trade-offs
 
-6. **NixOS packaging** — AEGIS overlay integration; listed as Tier 1 in distribution-strategy.md
+6. **NixOS packaging** — Augmentum OS overlay integration; Tier 1 in distribution strategy
    - Path: `packaging/nix/` (derivation present)
    - Blocked on: flake wiring / nixpkgs submission decisions
 

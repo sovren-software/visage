@@ -574,7 +574,7 @@ Measure time from `Verify()` D-Bus call to response, with model pre-loaded:
 | 6 | Rate limiting + audit | Attempt tracking, lockout, structured logging | H3 (security) |
 | 7 | Calibration workflow | Auto-threshold from enrollment data, diagnostic output | H2 (reliability) |
 | 8 | Ubuntu packaging | .deb package, pam-auth-update profile, systemd unit | Distribution target |
-| 9 | NixOS module | Declarative module in nixpkgs or overlay format | AEGIS OS integration |
+| 9 | NixOS module | Declarative module in nixpkgs or overlay format | Augmentum OS integration |
 | 10 | CLI polish + docs | visage enroll/verify/list/remove/test/status/calibrate | User experience |
 
 ---
