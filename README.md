@@ -59,6 +59,7 @@ Not yet suitable for production use — see [Known Limitations](docs/STATUS.md#k
 | `visage-cli` | Binary | CLI tool — enroll, verify, test, diagnostics |
 | `visage-core` | Library | Face detection (SCRFD) + recognition (ArcFace) via ONNX |
 | `visage-hw` | Library | Camera capture, IR emitter control, hardware quirks DB |
+| `visage-models` | Library | ONNX model manifest, pinned SHA-256 checksums, integrity verification |
 
 ## Installation (Ubuntu 24.04)
 
@@ -177,7 +178,7 @@ second `/dev/video*` node under `uvcvideo` and work with Visage. However, newer
 ThinkPad generations (Gen 11+) may use Intel IPU6 for the integrated camera stack.
 
 **IPU6 note:** Intel IPU6 cameras require the proprietary Intel camera HAL and
-libcamera, not V4L2. Supporting them is a separate milestone (v0.3+).
+libcamera, not V4L2. Supporting them is a separate milestone (v0.4+).
 
 ### IR emitter quirks
 
@@ -222,7 +223,7 @@ Bugs fixed during testing: [DeviceAllow glob](docs/STATUS.md#bugs-found-during-t
 - [Release Status & Known Limitations](docs/STATUS.md)
 - [Architecture](docs/architecture.md)
 - [Threat Model](docs/threat-model.md)
-- [Architecture Decisions](docs/decisions/) ← 8 ADRs, one per implementation step
+- [Architecture Decisions](docs/decisions/) ← 9 ADRs covering all implementation and security decisions
 
 ## Contributing
 

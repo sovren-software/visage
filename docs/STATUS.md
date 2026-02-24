@@ -1,7 +1,7 @@
 # Visage v0.3 Release Status
 
 **Last updated:** 2026-02-23
-**Build state:** All 6 implementation steps complete. End-to-end tested on Ubuntu 24.04.4 LTS.
+**Build state:** v0.3.0 shipped. All 6 implementation steps complete + model integrity enforcement. End-to-end tested on Ubuntu 24.04.4 LTS.
 
 ---
 
@@ -15,6 +15,7 @@
 | 4 | PAM module (`pam-visage`) | ✅ Complete — PAM_IGNORE fallback, system bus, FFI safe |
 | 5 | IR emitter (`visage-hw`) | ✅ Complete — UVC extension unit, quirks DB, ASUS Zenbook |
 | 6 | Packaging | ✅ Complete — .deb, systemd, pam-auth-update, `visage setup` |
+| 7 | Model integrity (`visage-models`) | ✅ Complete — pinned SHA-256, fail-closed daemon startup, shared manifest |
 
 ---
 
@@ -78,7 +79,7 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 
 ---
 
-## Remaining Work (Before v0.3 Announcement)
+## Remaining Work (Before Public Announcement)
 
 ### Blockers
 
@@ -89,7 +90,13 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 
 3. ~~IR emitter suspend/resume hook~~ — **DONE** (systemd sleep hook restarts visaged on resume)
 
-### High Priority (not blockers for v0.3 but ship before public announcement)
+4. ~~ONNX model integrity verification~~ — **DONE** (v0.3.0, commit 5d001c2)
+   - `visage-models` crate: pinned SHA-256, shared manifest, `verify_models_dir`
+   - `visaged` fails closed at startup if models are missing or checksums mismatch
+   - `visage setup` refactored to use shared manifest (no duplicated model list)
+   - ADR 009 documents rationale, trade-offs, and known limitations
+
+### High Priority (not blockers but ship before public announcement)
 
 4. ~~**Rate limiting**~~ — **DONE** — 5 failures/60s sliding window → 5-min lockout
 
@@ -140,8 +147,9 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 | `pam-visage` | 5 | PAM/syslog constant values, D-Bus error handling without daemon |
 | `visage-core` | 27 | Detection, alignment, recognition preprocessing, matching |
 | `visage-hw` | 9 | Frame processing, CLAHE, dark frame detection, pixel conversion |
-| `visaged` | 10 | Rate limiting and store tests (roundtrip, encryption, corruption hardening) |
-| **Total** | **51** | **Unit tests — no integration tests; no hardware tests** |
+| `visage-models` | 4 | SHA-256 verification: missing file, checksum mismatch, checksum match, missing directory |
+| `visaged` | 14 | Rate limiting, store roundtrip, encryption, corruption hardening |
+| **Total** | **59** | **Unit tests — no integration tests; no hardware tests** |
 
 Integration tests (camera + inference + daemon + PAM) are not present. They require physical
 hardware (IR camera) and are deferred to manual acceptance testing on Ubuntu 24.04.

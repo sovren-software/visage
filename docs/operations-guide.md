@@ -359,6 +359,42 @@ If empty, re-enroll: `sudo visage enroll --label default`
 
 ---
 
+### Daemon fails to start — model integrity error
+
+If `systemctl start visaged` fails and `journalctl -u visaged -n 20` shows:
+
+```
+Error: model integrity verification failed for /var/lib/visage/models
+Caused by: model file not found: det_10g.onnx (...)
+```
+
+or:
+
+```
+Caused by: model checksum mismatch for w600k_r50.onnx
+  expected: 4c06341c...
+  got:      <something else>
+```
+
+The ONNX model files are missing, incomplete, or do not match the checksums pinned
+for this release. This happens after:
+
+- A fresh install before running `visage setup`
+- `apt purge` followed by reinstall (purge removes `/var/lib/visage/models/`)
+- A partial or interrupted download
+- Manual replacement of a model file with an incompatible version
+
+**Fix:**
+```bash
+sudo visage setup
+sudo systemctl start visaged
+```
+
+`visage setup` re-downloads and re-verifies both models. The daemon will not start
+until both files are present and checksums match.
+
+---
+
 ### `visage enroll` fails: `ServiceUnknown`
 
 The daemon isn't registered on D-Bus yet. Wait 3–5 seconds after `systemctl start visaged`
@@ -462,6 +498,10 @@ and re-enroll after reinstalling.
   encryption (e.g., LUKS) is still recommended for sensitive environments.
 - The daemon runs as root with a restrictive systemd sandbox (`ProtectSystem=strict`,
   `NoNewPrivileges=true`, `PrivateTmp=true`).
+- **ONNX model integrity is enforced at startup.** The daemon verifies SHA-256
+  checksums of both model files against values pinned at release time before loading
+  them. If verification fails, the daemon refuses to start. Run `sudo visage setup`
+  to download verified models. See [ADR 009](decisions/009-onnx-model-integrity-verification.md).
 - PAM integration always falls back to password on any error or timeout (`PAM_IGNORE`).
   Visage cannot lock you out of your system.
 - For the full threat model, see [threat-model.md](threat-model.md).

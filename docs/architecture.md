@@ -18,6 +18,7 @@
 3. **IR emitter absorbed** — No external dependency for emitter control
 4. **Pluggable models** — ONNX Runtime for inference, swap models without recompilation
 5. **Distribution-agnostic** — Ubuntu first, NixOS second, then Arch/Fedora
+6. **Fail-closed model integrity** — Daemon refuses to start if ONNX models are missing or checksums mismatch
 
 ## Component Overview
 
@@ -31,6 +32,12 @@
 │ visage    │───────────▶│ visage-  │──────────▶│ SCRFD    │
 │ (CLI)     │            │ core     │           │ ArcFace  │
 └───────────┘            └──────────┘           └──────────┘
+
+┌──────────────────────────────────────────────────────────┐
+│ visage-models (library)                                  │
+│ Pinned SHA-256 manifest · verify_models_dir()            │
+│ Used by: visaged (startup check) + visage-cli (setup)    │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ## Authentication Flow
@@ -233,8 +240,13 @@ See [ADR 006](decisions/006-ir-emitter-integration.md) for full decision log.
 | SCRFD det_10g | `det_10g.onnx` | 16 MB | Face detection, 3-stride, 5-point landmarks |
 | ArcFace w600k_r50 | `w600k_r50.onnx` | 166 MB | 512-D face embeddings |
 
-Both models are loaded from `$XDG_DATA_HOME/visage/models/` (defaults to
-`~/.local/share/visage/models/`). See `models/README.md` for download instructions.
+Both models are loaded from the configured model directory (default
+`/var/lib/visage/models/` when running as root via systemd; overridable via
+`VISAGE_MODEL_DIR`). Models are downloaded by `visage setup` and verified
+against pinned SHA-256 checksums before use.
+
+See [ADR 009](decisions/009-onnx-model-integrity-verification.md) for the
+integrity verification design and `visage-models` crate for the manifest.
 
 ### SCRFD Detector
 
@@ -356,13 +368,14 @@ alignment::align_face(frame: &[u8], width: u32, height: u32, landmarks: &[(f32,f
 visage_core::default_model_dir() -> PathBuf  // $XDG_DATA_HOME/visage/models
 ```
 
-### Known Limitations (v2)
+### Known Limitations (visage-core)
 
 - **CPU-only inference.** No CUDA/Vulkan execution providers. ~60-80ms total auth latency.
 - **Anti-spoofing is passive.** IR + emitter provides passive liveness; no active detection.
-- **No integration test suite.** Unit tests (36) require no models. End-to-end tests need
+- **No integration test suite.** Unit tests require no models. End-to-end tests need
   downloaded ONNX files and are not yet gated behind `--features integration`.
-- **No load-time sanity check.** Model compatibility is verified on first inference, not at load.
+- **No load-time model sanity check.** Structural compatibility is verified on first inference,
+  not at load. SHA-256 integrity is verified before load by `visage-models`.
 
 See [ADR 004](decisions/004-inference-pipeline-implementation.md) for full decision log, rationale, and v3 migration paths.
 
@@ -389,15 +402,22 @@ All settings are overridable via `VISAGE_*` environment variables. Defaults:
 ```
 1. Init tracing (RUST_LOG)
 2. Load Config from env vars
-3. spawn_engine() — opens camera + loads both ONNX models synchronously
+3. verify_models_dir(config.model_dir) — SHA-256 check against pinned manifest
+   Fail here → daemon exits with actionable error: "run `sudo visage setup`"
+4. spawn_engine() — opens camera + loads both ONNX models synchronously
    IR emitter: probe sysfs VID:PID → look up quirk → log found/not-found (never fatal)
    Warmup: discard N frames for camera AGC/AE stabilization
    Fail here → daemon exits; error visible in journal
-4. FaceModelStore::open() — creates SQLite DB + runs migrations if needed
-5. zbus SYSTEM bus (or session bus if VISAGE_SESSION_BUS=1):
+5. FaceModelStore::open() — creates SQLite DB + runs migrations if needed
+6. zbus SYSTEM bus (or session bus if VISAGE_SESSION_BUS=1):
    register org.freedesktop.Visage1 at /org/freedesktop/Visage1
-6. Wait for SIGINT/SIGTERM
+7. Wait for SIGINT/SIGTERM
 ```
+
+Step 3 is the model integrity gate. It runs before any camera or ONNX Runtime
+initialization. If it fails, the error message names the failing file, shows
+the expected vs. actual checksum, and instructs the operator to re-run
+`sudo visage setup`. See [ADR 009](decisions/009-onnx-model-integrity-verification.md).
 
 ### Engine Thread
 
@@ -436,18 +456,17 @@ The system bus requires:
 - D-Bus policy file installed at `/usr/share/dbus-1/system.d/org.freedesktop.Visage1.conf`
 - Daemon started with `sudo` (to own `org.freedesktop.Visage1`)
 
-### Known Limitations (v2)
+### Known Limitations (visaged)
 
-1. **No D-Bus caller authentication.** The `user` parameter is caller-supplied and not
-   validated against the D-Bus sender identity. A compromised caller can call `Verify`
-   for any username. Step 6 should bind `user` to the D-Bus peer credentials using
-   `GetConnectionCredentials`.
+1. **No D-Bus caller authentication via `GetConnectionCredentials`.** Caller UID is
+   validated via `GetConnectionUnixUser` and NSS lookup. Full `GetConnectionCredentials`
+   binding is deferred to v3.
 
 2. **best_quality unused.** `VerifyResult.best_quality` is computed but not exposed over
    D-Bus. Reserved as a v3 hook for quality metadata without a schema change.
 
 3. **Single auth flow at a time.** The engine thread processes requests serially (depth-4
-   queue). Concurrent `Verify` calls serialize. Acceptable for v2; v3 would use a pool.
+   queue). Concurrent `Verify` calls serialize. Acceptable for v0.x; v3 would use a pool.
 
 See [ADR 003](decisions/003-daemon-integration.md) and [ADR 005](decisions/005-pam-system-bus-migration.md).
 
@@ -543,7 +562,8 @@ runs `pam-auth-update --package` to insert Visage into the PAM stack at priority
 (before `pam_unix`).
 
 **Model download:** `sudo visage setup` downloads ONNX models (~182 MB) from HuggingFace
-with SHA-256 verification. Models are stored in `/var/lib/visage/models/`.
+with SHA-256 verification. Models are stored in `/var/lib/visage/models/`. The daemon
+enforces the same checksums at startup (fail-closed). See [ADR 009](decisions/009-onnx-model-integrity-verification.md).
 
 **Remove:** `prerm` stops the daemon, disables the service, and runs
 `pam-auth-update --remove` to restore password-only auth.
@@ -584,14 +604,61 @@ The pam-auth-update profile places Visage at priority 900:
 - No match or error (`PAM_IGNORE`) → falls through to password prompt
 - 3-second D-Bus call timeout prevents login hangs
 
-### Known Limitations (Step 6)
+### Known Limitations (Packaging)
 
 1. **No runtime quirk override.** Adding camera support requires rebuild.
 2. **No dedicated service user.** Daemon runs as root with systemd hardening.
-3. **No D-Bus caller authentication.** `user` parameter is caller-supplied.
 
 See [ADR 007](decisions/007-ubuntu-packaging.md) for full decision log.
 
+## Model Integrity (`visage-models`)
+
+The `visage-models` crate is the single source of truth for ONNX model metadata.
+
+### Public API
+
+```rust
+// Authoritative model list (name, URL, SHA-256, size)
+pub const MODELS: &[ModelFile]
+
+// Verify a single file against an expected SHA-256
+pub fn verify_file_sha256(name: &'static str, path: &Path, expected: &str)
+    -> Result<(), ModelIntegrityError>
+
+// Verify all required models in a directory (used by visaged at startup)
+pub fn verify_models_dir(model_dir: &Path)
+    -> Result<(), ModelIntegrityError>
+
+// Compute SHA-256 hex digest of a file
+pub fn sha256_file_hex(path: &Path)
+    -> Result<String, ModelIntegrityError>
+```
+
+### Error Types
+
+| Variant | When |
+|---------|------|
+| `MissingModel` | File does not exist at expected path |
+| `Open` | File exists but cannot be opened (permissions) |
+| `Read` | File opened but I/O error during hashing |
+| `ChecksumMismatch` | File present and readable but SHA-256 does not match pinned value |
+
+All errors include the file path and name. `ChecksumMismatch` includes both the
+expected and actual digest for operator diagnosis.
+
+### Pinned Checksums (v0.3.0)
+
+| File | SHA-256 | Source |
+|------|---------|--------|
+| `det_10g.onnx` | `5838f7fe...b5b91` | HuggingFace LFS pointer `oid sha256:` |
+| `w600k_r50.onnx` | `4c06341c...e9e43` | HuggingFace LFS pointer `oid sha256:` |
+
+Checksums are committed to the repository. Any change to pinned model versions
+is visible in git history.
+
+See [ADR 009](decisions/009-onnx-model-integrity-verification.md) for the full
+decision log, alternatives considered, and known limitations.
+
 ## Security Model
 
-See [threat-model.md](threat-model.md).
+See [threat-model.md](threat-model.md) and [ADR 009](decisions/009-onnx-model-integrity-verification.md).
