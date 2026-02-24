@@ -73,7 +73,7 @@ jobs:
         run: cargo deb -p visaged
 
       - name: Upload .deb artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: visage-deb
           path: target/debian/visage_*.deb
