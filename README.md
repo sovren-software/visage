@@ -80,52 +80,84 @@ Use `--no-enroll` for headless/CI builds.
 For full instructions — configuration, troubleshooting, multi-user, removal — see
 the [Operations Guide](docs/operations-guide.md).
 
-## Installation (Ubuntu 24.04)
+## Installation
 
-### From a pre-built .deb
+### Ubuntu / Debian (.deb)
 
 ```bash
-# Install the package
 sudo apt install ./visage_0.3.0_amd64.deb
-
-# Download face detection models (~182 MB)
-sudo visage setup
-
-# Enroll your face
-sudo visage enroll --label default
-
-# Test — authenticates via face, falls back to password on failure
-sudo echo "face auth works"
+sudo visage setup                          # download ONNX models (~182 MB)
+sudo visage enroll --label default         # enroll your face
+sudo echo "face auth works"                # test — face first, password fallback
 ```
 
-### What the package does
-
-- Installs `visaged` (daemon), `visage` (CLI), and `pam_visage.so` (PAM module)
-- Enables the `visaged` systemd service and `visage-resume.service` (suspend/resume)
-- Configures PAM via `pam-auth-update` (face auth before password, password fallback)
-
-### Removal
+PAM is configured automatically via `pam-auth-update`.
 
 ```bash
 sudo apt remove visage     # removes binaries, disables PAM and service
 sudo apt purge visage      # also removes /var/lib/visage (models + face database)
 ```
 
-After removal, `sudo` returns to password-only authentication immediately.
-
-### Build from source
-
-The [quickstart script](#quick-start-build-from-source) automates this entire process.
+The [quickstart script](#quick-start-build-from-source) automates building from source.
 To build manually:
 
 ```bash
 sudo apt install libpam0g-dev libdbus-1-dev
 cargo install cargo-deb
-
 cargo build --release --workspace
 cargo deb -p visaged --no-build
 sudo apt install ./target/debian/visage_*.deb
 ```
+
+### NixOS (flake)
+
+```nix
+# flake.nix
+{
+  inputs.visage.url = "github:sovren-software/visage";
+
+  outputs = { self, nixpkgs, visage, ... }: {
+    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+      modules = [
+        visage.nixosModules.default
+        { services.visage.enable = true; }
+      ];
+    };
+  };
+}
+```
+
+Then download models and enroll:
+
+```bash
+sudo visage setup
+sudo visage enroll --label default
+```
+
+The NixOS module handles systemd, D-Bus policy, and PAM integration declaratively.
+See `packaging/nix/module.nix` for all options (`modelDir`, `camera`, `similarityThreshold`, etc.).
+
+### Arch Linux (AUR)
+
+```bash
+git clone https://aur.archlinux.org/visage.git
+cd visage && makepkg -si
+sudo visage setup
+sudo visage enroll --label default
+```
+
+PAM requires a manual one-line edit on Arch — add before `pam_unix.so` in
+`/etc/pam.d/system-auth`:
+
+```
+auth  [success=end default=ignore]  pam_visage.so
+```
+
+### What the package does
+
+- Installs `visaged` (daemon), `visage` (CLI), and `pam_visage.so` (PAM module)
+- Enables the `visaged` systemd service and `visage-resume.service` (suspend/resume)
+- Configures PAM (automatic on Ubuntu/NixOS, manual on Arch)
 
 ## Usage
 

@@ -51,7 +51,7 @@ sudo echo "face auth works"
 After step 4, pressing Enter should authenticate via face recognition. If no face is
 detected quickly, the system falls back to your password prompt.
 
-### Build from source
+### Build from source (Ubuntu/Debian)
 
 ```bash
 # Prerequisites
@@ -64,6 +64,68 @@ cargo deb -p visaged --no-build
 
 sudo apt install ./target/debian/visage_*.deb
 ```
+
+### NixOS (flake)
+
+Add the Visage flake input and enable the module in your NixOS configuration:
+
+```nix
+# flake.nix
+{
+  inputs.visage.url = "github:sovren-software/visage";
+
+  outputs = { self, nixpkgs, visage, ... }: {
+    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+      modules = [
+        visage.nixosModules.default
+        {
+          services.visage = {
+            enable = true;
+            # camera = "/dev/video2";          # optional: override auto-detect
+            # similarityThreshold = 0.45;      # optional: default 0.45
+            # pam.enable = true;               # default: true
+          };
+        }
+      ];
+    };
+  };
+}
+```
+
+After `nixos-rebuild switch`, download models and enroll:
+
+```bash
+sudo visage setup
+sudo visage enroll --label default
+```
+
+The module handles systemd service, D-Bus policy, and PAM integration declaratively.
+See `packaging/nix/module.nix` for all available options.
+
+### Arch Linux (AUR)
+
+```bash
+git clone https://aur.archlinux.org/visage.git
+cd visage && makepkg -si
+```
+
+PAM is **not** configured automatically on Arch. Add the following line **before**
+`auth required pam_unix.so` in `/etc/pam.d/system-auth` (or `/etc/pam.d/sudo`
+for sudo only):
+
+```
+auth  [success=end default=ignore]  pam_visage.so
+```
+
+Then complete setup:
+
+```bash
+sudo visage setup
+sudo visage enroll --label default
+```
+
+On removal (`pacman -R visage`), remember to remove the `pam_visage.so` line
+from `/etc/pam.d/system-auth` manually.
 
 ---
 

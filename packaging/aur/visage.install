@@ -1,30 +1,68 @@
 post_install() {
-    echo ""
-    echo ">>> Visage installed. Run the following to complete setup:"
-    echo ""
-    echo "    sudo visage setup          # download ONNX models (~182 MB)"
-    echo "    visage enroll              # enroll your face"
-    echo ""
-    echo ">>> PAM configuration (Arch Linux):"
-    echo "    Add the following line BEFORE 'auth required pam_unix.so' in"
-    echo "    /etc/pam.d/system-auth (or the specific service you want, e.g. sudo):"
-    echo ""
-    echo "        auth sufficient pam_visage.so"
-    echo ""
-    echo "    On failure or daemon unavailability, Visage passes through to password."
-    echo ""
     systemctl daemon-reload || true
     systemctl enable --now visaged.service 2>/dev/null || true
     systemctl enable visage-resume.service 2>/dev/null || true
+
+    echo ""
+    echo "==> Visage installed. Complete setup with:"
+    echo ""
+    echo "  1. Download ONNX models (~182 MB):"
+    echo "     sudo visage setup"
+    echo ""
+    echo "  2. Enroll your face:"
+    echo "     sudo visage enroll --label default"
+    echo ""
+    echo "  3. Configure PAM (enables face auth for sudo, login, etc.):"
+    echo "     Add this line BEFORE 'auth required pam_unix.so' in"
+    echo "     /etc/pam.d/system-auth:"
+    echo ""
+    echo "       auth  [success=end default=ignore]  pam_visage.so"
+    echo ""
+    echo "     Or for sudo only, add the same line to /etc/pam.d/sudo."
+    echo "     On failure or daemon unavailability, password is used as fallback."
+    echo ""
+    echo "  4. Test:"
+    echo "     visage verify                # manual face check"
+    echo "     sudo echo 'face auth works'  # PAM integration test"
+    echo ""
+    echo "  See: https://github.com/sovren-software/visage/blob/main/docs/operations-guide.md"
+    echo ""
+
+    if [ ! -f /var/lib/visage/models/det_10g.onnx ]; then
+        echo "==> WARNING: ONNX models not found. Run 'sudo visage setup' first."
+    fi
 }
 
 post_upgrade() {
     systemctl daemon-reload || true
     systemctl restart visaged.service 2>/dev/null || true
+
+    echo ""
+    echo "==> Visage upgraded to $1."
+    echo "    Daemon restarted. Verify with: visage status"
+    echo ""
+    echo "    If upgrading from a pre-0.3.0 version, re-enrollment is recommended"
+    echo "    to store embeddings in encrypted form:"
+    echo "      sudo visage remove <model-id> --user \$USER"
+    echo "      sudo visage enroll --label default"
+    echo ""
 }
 
 pre_remove() {
     systemctl stop    visaged.service 2>/dev/null || true
     systemctl disable visaged.service 2>/dev/null || true
     systemctl disable visage-resume.service 2>/dev/null || true
+}
+
+post_remove() {
+    systemctl daemon-reload || true
+
+    echo ""
+    echo "==> Visage removed."
+    echo "    Remember to remove the pam_visage.so line from /etc/pam.d/system-auth"
+    echo "    (or /etc/pam.d/sudo) if you added it manually."
+    echo ""
+    echo "    Face database and models remain in /var/lib/visage/."
+    echo "    To remove all data: sudo rm -rf /var/lib/visage"
+    echo ""
 }

@@ -1,5 +1,5 @@
 # Maintainer: Sovren Software <hello@sovren.software>
-# Contributor: https://github.com/sovren-software/visage
+# https://github.com/sovren-software/visage
 
 pkgname=visage
 pkgver=0.3.0
@@ -8,24 +8,36 @@ pkgdesc="Linux face authentication via PAM — persistent daemon, IR camera supp
 arch=('x86_64')
 url="https://github.com/sovren-software/visage"
 license=('MIT')
-depends=('pam' 'dbus')
+depends=('pam' 'dbus' 'systemd')
 makedepends=('rust' 'cargo' 'pkg-config')
+provides=('visage')
+conflicts=('visage')
 install="$pkgname.install"
+# Preserve user data and face database across upgrades
+backup=('var/lib/visage/faces.db')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/sovren-software/visage/archive/refs/tags/v$pkgver.tar.gz")
-# Update sha256sum after computing: sha256sum visage-0.3.0.tar.gz
+# TODO: compute real sha256sum at release time: sha256sum visage-0.3.0.tar.gz
 sha256sums=('SKIP')
 
 build() {
     cd "$pkgname-$pkgver"
+    export CARGO_TARGET_DIR=target
     cargo build --release --workspace
+}
+
+check() {
+    cd "$pkgname-$pkgver"
+    export CARGO_TARGET_DIR=target
+    # Unit tests only — integration tests require a running daemon and camera
+    cargo test --workspace --lib
 }
 
 package() {
     cd "$pkgname-$pkgver"
 
     # Binaries
-    install -Dm755 target/release/visaged        "$pkgdir/usr/bin/visaged"
-    install -Dm755 target/release/visage         "$pkgdir/usr/bin/visage"
+    install -Dm755 target/release/visaged "$pkgdir/usr/bin/visaged"
+    install -Dm755 target/release/visage  "$pkgdir/usr/bin/visage"
 
     # PAM module
     install -Dm644 target/release/libpam_visage.so \
@@ -41,10 +53,10 @@ package() {
     install -Dm644 packaging/systemd/visage-resume.service \
         "$pkgdir/usr/lib/systemd/system/visage-resume.service"
 
-    # Model directory (empty — models downloaded at runtime via `visage setup`)
+    # State directory (empty — models downloaded at runtime via `visage setup`)
     install -dm700 "$pkgdir/var/lib/visage/models"
 
     # License and docs
-    install -Dm644 LICENSE       "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-    install -Dm644 README.md     "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -Dm644 LICENSE   "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
 }
