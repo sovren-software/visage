@@ -423,6 +423,29 @@ See [contrib/hw/README.md](../contrib/hw/README.md).
 
 ---
 
+### Daemon still running old version after package upgrade
+
+`apt install` upgrades the package files on disk but does **not** restart the daemon.
+The old process remains in memory until you restart it:
+
+```bash
+sudo systemctl restart visaged
+```
+
+After restart, verify with `visage status` — the version field should match the
+installed package (`dpkg -l visage`).
+
+**Note:** If the old enrollment was created before AES-256-GCM encryption was added,
+the daemon reads it transparently via the legacy plaintext path. Re-enrolling is
+recommended to store the embedding in encrypted form:
+
+```bash
+sudo visage remove <model-id> --user <username>
+sudo visage enroll --label default --user <username>
+```
+
+---
+
 ### Face auth broken after software update
 
 If a package update caused PAM issues:
