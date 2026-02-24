@@ -1,7 +1,7 @@
 # Visage v0.3 Release Status
 
 **Last updated:** 2026-02-24
-**Build state:** v0.3.0 shipped. All 6 implementation steps complete + model integrity enforcement. End-to-end tested on Ubuntu 24.04.4 LTS.
+**Build state:** v0.3.0 shipped and validated locally. All 6 implementation steps complete + model integrity enforcement + OSS governance. End-to-end tested on Ubuntu 24.04.4 LTS (v0.1.0 → v0.3.0 upgrade path verified 2026-02-24).
 
 ---
 
@@ -26,8 +26,8 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 
 ### Core Function
 
-- [x] `visage enroll --label normal` — captures 5 frames, stores model, returns UUID
-- [x] `visage verify` — matches enrolled face, exits 0 (similarity 0.87-0.90)
+- [x] `visage enroll --label default` — captures 5 frames, confidence-weighted averaging, stores encrypted model, returns UUID
+- [x] `visage verify` — matches enrolled face, exits 0 (similarity 0.97 with v0.3.0 enrollment; 0.83 with legacy plaintext enrollment)
 - [ ] `visage verify` — returns exit 1 on no-match (different person or covered camera) — requires interactive test
 - [ ] `visage verify` completes in <500ms (warm daemon, good IR illumination) — 1.4s on USB webcam/CPU; needs IR+GPU test
 - [ ] 10 consecutive `sudo echo test` attempts: ≥9 succeed via face recognition — requires interactive test
@@ -41,8 +41,8 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 
 ### Packaging Lifecycle
 
-- [x] `sudo apt install ./visage_*.deb` on Ubuntu 24.04 succeeds
-- [x] `systemctl status visaged` shows active after setup
+- [x] `sudo apt install ./visage_*.deb` on Ubuntu 24.04 succeeds (upgrade v0.1.0 → v0.3.0 verified)
+- [x] `systemctl status visaged` shows active after setup (note: `systemctl restart visaged` required after package upgrade)
 - [x] `grep visage /etc/pam.d/common-auth` shows pam_visage.so entry
 - [x] `sudo visage setup` downloads and verifies both ONNX models (182 MB, SHA-256)
 - [x] `sudo apt remove visage` → `grep visage /etc/pam.d/common-auth` shows no entry
@@ -58,8 +58,21 @@ Items marked ✅ have been verified; items marked ⬜ require hardware not avail
 ### D-Bus Access Control
 
 - [x] `visage enroll` as non-root user is rejected (D-Bus policy)
+- [x] `visage list` as non-root user is rejected (D-Bus policy)
+- [x] `visage remove` cross-user is rejected (store-level protection)
 - [x] `visage verify` as non-root user succeeds (D-Bus policy allows)
 - [x] `visage status` as non-root user succeeds
+
+### v0.3.0 Upgrade Path
+
+- [x] Package upgrade v0.1.0 → v0.3.0 via `apt install` succeeds cleanly
+- [x] Legacy plaintext enrollment readable after upgrade (transparent migration path)
+- [x] New encryption key generated on first v0.3.0 daemon start (old key absent)
+- [x] Model integrity check passes at daemon startup (silent success)
+- [x] `visage status` shows new fields: `model_dir`, `timeout`, `verify_n`, `enroll_n`, `emitter`, `bus`
+- [x] `visage discover` shows kernel driver per device, VID:PID, quirk status
+- [x] Re-enrollment with v0.3.0 produces encrypted embedding (AES-256-GCM)
+- [x] PAM face auth works after re-enrollment (`sudo -k && sudo echo test` — similarity 0.91)
 
 ### Boot/Suspend Cycle
 
