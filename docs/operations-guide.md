@@ -19,6 +19,19 @@ Supported cameras: see [Hardware Compatibility](#hardware-compatibility).
 
 ## Installation
 
+### Quickstart (recommended for developers)
+
+The quickstart script automates the entire process — dependency checks, build,
+install, model download, enrollment, and verification:
+
+```bash
+git clone https://github.com/sovren-software/visage.git
+cd visage
+./scripts/quickstart.sh
+```
+
+Use `--no-enroll` for headless or CI environments. See `scripts/quickstart.sh --help`.
+
 ### From a pre-built .deb
 
 ```bash

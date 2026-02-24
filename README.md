@@ -61,7 +61,28 @@ Not yet suitable for production use — see [Known Limitations](docs/STATUS.md#k
 | `visage-hw` | Library | Camera capture, IR emitter control, hardware quirks DB |
 | `visage-models` | Library | ONNX model manifest, pinned SHA-256 checksums, integrity verification |
 
+## Quick Start (Build from Source)
+
+Clone the repository and run the quickstart script. It handles dependency checks,
+building, packaging, installation, model download, face enrollment, and verification
+— from zero to working face auth in one command.
+
+```bash
+git clone https://github.com/sovren-software/visage.git
+cd visage
+./scripts/quickstart.sh
+```
+
+The script validates your environment at each stage with clear pass/fail signals.
+Requires Ubuntu 24.04 (amd64), Rust toolchain, a camera, and internet access.
+Use `--no-enroll` for headless/CI builds.
+
+For full instructions — configuration, troubleshooting, multi-user, removal — see
+the [Operations Guide](docs/operations-guide.md).
+
 ## Installation (Ubuntu 24.04)
+
+### From a pre-built .deb
 
 ```bash
 # Install the package
@@ -76,9 +97,6 @@ sudo visage enroll --label default
 # Test — authenticates via face, falls back to password on failure
 sudo echo "face auth works"
 ```
-
-For full instructions — configuration, troubleshooting, multi-user, removal — see
-the [Operations Guide](docs/operations-guide.md).
 
 ### What the package does
 
@@ -97,12 +115,16 @@ After removal, `sudo` returns to password-only authentication immediately.
 
 ### Build from source
 
+The [quickstart script](#quick-start-build-from-source) automates this entire process.
+To build manually:
+
 ```bash
 sudo apt install libpam0g-dev libdbus-1-dev
 cargo install cargo-deb
 
 cargo build --release --workspace
 cargo deb -p visaged --no-build
+sudo apt install ./target/debian/visage_*.deb
 ```
 
 ## Usage
