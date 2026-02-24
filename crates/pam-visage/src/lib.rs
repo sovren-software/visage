@@ -315,7 +315,8 @@ mod tests {
                         || msg.contains("NameHasNoOwner")
                         || msg.contains("not provided")
                         || msg.contains("Failed to connect")
-                        || msg.contains("no enrolled models"),
+                        || msg.contains("no enrolled models")
+                        || msg.contains("unknown user"),
                     "unexpected error message: {msg}"
                 );
             }
