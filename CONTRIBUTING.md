@@ -139,7 +139,7 @@ Specifically, these are **out of scope for Visage**:
 
 | Feature | Why out of scope |
 |---------|-----------------|
-| Gesture or motion tracking | Planned for Augmentum OS desktop layer — not an auth primitive |
+| Gesture or motion tracking | Planned for Esver OS desktop layer — not an auth primitive |
 | Fingerprint authentication | Different hardware domain; fprintd already exists and is well-maintained |
 | Alternative biometrics (iris, voice, behavioral) | Separate evaluation required; voice is planned for a future multi-modal platform |
 | LLM or AI models in core crates | The authentication path is deterministic. Always. |
@@ -148,7 +148,7 @@ Specifically, these are **out of scope for Visage**:
 
 **Why document this explicitly:** The Linux community is generous with feature suggestions.
 These boundaries exist to keep Visage maintainable and security-auditable, not because the
-ideas are bad. If you want gestures or voice on Linux, watch the [Augmentum OS](https://augmentum.computer) project.
+ideas are bad. If you want gestures or voice on Linux, watch the [Esver OS](https://esver.computer) project.
 
 ---
 
@@ -266,5 +266,5 @@ See [docs/hardware-compatibility.md](docs/hardware-compatibility.md) for camera 
 
 ---
 
-*Visage is the default face authentication layer for [Augmentum OS](https://augmentum.computer),
+*Visage is the default face authentication layer for [Esver OS](https://esver.computer),
 shipping Summer 2026.*
