@@ -51,7 +51,7 @@ chrono = { version = "0.4", features = ["serde"] }
 image = "0.25"
 
 # ONNX inference
-ort = "2.0.0-rc.11"
+ort = "2.0.0-rc.12"
 ndarray = "0.17"
 
 # Cryptography (embedding encryption)
