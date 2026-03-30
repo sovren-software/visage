@@ -1,6 +1,8 @@
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
-use visage_core::{check_landmark_stability, CosineMatcher, Embedding, FaceModel, MatchResult, Matcher};
+use visage_core::{
+    check_landmark_stability, CosineMatcher, Embedding, FaceModel, MatchResult, Matcher,
+};
 use visage_hw::{Camera, IrEmitter};
 
 #[derive(Error, Debug)]
@@ -14,10 +16,7 @@ pub enum EngineError {
     #[error("no face detected in any captured frame")]
     NoFaceDetected,
     #[error("liveness check failed: landmark displacement {displacement:.3} px < threshold {threshold:.3} px")]
-    LivenessCheckFailed {
-        displacement: f32,
-        threshold: f32,
-    },
+    LivenessCheckFailed { displacement: f32, threshold: f32 },
     #[error("verification timed out")]
     VerifyTimeout,
     #[error("engine thread exited")]
@@ -422,10 +421,8 @@ fn run_verify(
     // Run after detection loop so we always have full landmark data.
     // Only gates the result when a match would otherwise succeed.
     if liveness_enabled && result.matched {
-        let liveness = check_landmark_stability(
-            &landmark_sequence,
-            Some(liveness_min_displacement),
-        );
+        let liveness =
+            check_landmark_stability(&landmark_sequence, Some(liveness_min_displacement));
 
         tracing::debug!(
             is_live = liveness.is_live,

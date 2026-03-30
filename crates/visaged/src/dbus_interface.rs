@@ -141,7 +141,15 @@ impl VisageService {
         }
 
         // --- Fetch gallery and config (release lock before engine call) ---
-        let (engine, gallery, threshold, frames_count, timeout_secs, liveness_enabled, liveness_min_displacement) = {
+        let (
+            engine,
+            gallery,
+            threshold,
+            frames_count,
+            timeout_secs,
+            liveness_enabled,
+            liveness_min_displacement,
+        ) = {
             let state = self.state.lock().await;
             let gallery = state.store.get_gallery_for_user(user).await.map_err(|e| {
                 tracing::error!(error = %e, "verify: gallery fetch failed");
