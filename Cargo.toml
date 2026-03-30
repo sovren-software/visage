@@ -61,4 +61,4 @@ sha2 = "0.10"
 
 # FFI / system
 libc = "0.2"
-nix = "0.29"
+nix = "0.31"
