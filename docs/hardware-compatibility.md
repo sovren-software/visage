@@ -13,8 +13,8 @@ Run `visage discover` to get the answer for your machine.
 | Camera stack | `visage discover` output | Visage support |
 |-------------|--------------------------|----------------|
 | USB UVC | `driver=uvcvideo` | ✅ Supported |
-| Intel IPU6 | `driver=intel_ipu6*` | ❌ Not supported (v0.1) |
-| MIPI / libcamera | varies | ❌ Not supported (v0.1) |
+| Intel IPU6 | `driver=intel_ipu6*` | ❌ Not supported yet (v0.4+) |
+| MIPI / libcamera | varies | ❌ Not supported yet (v0.4+) |
 
 ---
 
@@ -49,7 +49,7 @@ Run `visage discover` to get the answer for your machine.
 | Brand / Line | IR camera | Linux driver | Notes |
 |---|---|---|---|
 | **Dell XPS** 15/16 (2023+) | Yes | `intel_ipu6` | IPU6 camera stack. Even the RGB webcam may not work on Linux without distro-specific libcamera support. |
-| **Microsoft Surface** (all lines) | Yes | Custom HAL | Requires linux-surface kernel patches + libcamera. IR via PAM not practical in v0.1. |
+| **Microsoft Surface** (all lines) | Yes | Custom HAL | Requires linux-surface kernel patches + libcamera. IR via PAM not practical yet. |
 
 ---
 
@@ -103,7 +103,7 @@ VID:PID to the correct control bytes for each known device.
 
 ## IPU6 support timeline
 
-Intel IPU6 cameras are on the v0.3 roadmap. Supporting them requires libcamera
+IPU6 cameras are planned for future versions. Supporting them requires libcamera
 integration rather than direct V4L2 capture, which is a substantial architectural
 addition. The primary blockers are:
 
