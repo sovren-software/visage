@@ -217,18 +217,18 @@ Useful for hardware support debugging before filing a quirk contribution.
 /dev/video4  VID=0x0bda PID=0x5850  no quirk (VID=0x0bda PID=0x5850)
 ```
 
-### Known Limitations (Step 5)
+### Known Limitations (IR Emitter)
 
 1. **One compiled-in quirk.** Adding a new camera requires a new `contrib/hw/*.toml`
    file and a rebuild. A runtime override directory (`/usr/share/visage/quirks/`) is
-   deferred to Step 6.
+   planned for a future release.
 
 2. **No udev rule.** Read+write access to `/dev/videoN` requires root or the `video`
-   group. A udev rule granting `visaged` access is deferred to Step 6.
+   group. A udev rule granting `visaged` access is planned for a future release.
 
-3. **100ms AGC warm-up is hardcoded.** `VISAGE_EMITTER_WARM_UP_MS` is deferred to Step 6.
+3. **100ms AGC warm-up is hardcoded.** `VISAGE_EMITTER_WARM_UP_MS` is planned for a future release.
 
-4. **`visage discover --probe` (test activation pulse) deferred to Step 6.**
+4. **`visage discover --probe` (test activation pulse) planned for a future release.**
 
 See [ADR 006](decisions/006-ir-emitter-integration.md) for full decision log.
 
@@ -522,21 +522,18 @@ pkexec vim /etc/pam.d/sudo
 su -c "vim /etc/pam.d/sudo"
 ```
 
-### Known Limitations (Step 4)
+### Known Limitations (PAM Module)
 
 1. **D-Bus timeout: 10–25 s.** Under normal conditions the daemon's 10 s verify timeout
    fires first. If the daemon deadlocks, the D-Bus default (~25 s) applies. A 3 s
-   client-side timeout is deferred to Step 6.
+   client-side timeout is planned for a future release.
 
 2. **No caller authentication.** The `user` string passed to `Verify()` comes from
-   `pam_get_user` and is not validated against D-Bus peer credentials. Step 6 should
-   use `GetConnectionCredentials` to bind the call to the authenticated PAM user.
+   `pam_get_user` and is not validated against D-Bus peer credentials. Future releases
+   should use `GetConnectionCredentials` to bind the call to the authenticated PAM user.
 
-3. **Development-only PAM config.** Manual `/etc/pam.d/sudo` edit. `pam-auth-update`
-   integration is Step 6 (packaging).
-
-4. **`eprintln!` logging.** Messages appear in the `sudo` terminal. Production syslog
-   (`LOG_AUTHPRIV`) is deferred to Step 6.
+3. **`eprintln!` logging.** Messages appear in the `sudo` terminal. Production syslog
+   (`LOG_AUTHPRIV`) is planned for a future release.
 
 See [ADR 005](decisions/005-pam-system-bus-migration.md) for full decision log.
 

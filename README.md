@@ -277,7 +277,7 @@ Bugs fixed during testing: [DeviceAllow glob](docs/STATUS.md#bugs-found-during-t
 - [Release Status & Known Limitations](docs/STATUS.md)
 - [Architecture](docs/architecture.md)
 - [Threat Model](docs/threat-model.md)
-- [Architecture Decisions](docs/decisions/) ← 10 ADRs covering implementation, security, and governance decisions
+- [Architecture Decisions](docs/decisions/) ← 11 ADRs covering implementation, security, governance, and liveness detection
 
 ## Security
 

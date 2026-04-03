@@ -266,4 +266,56 @@ mod tests {
         assert!(!result.matched);
         assert_eq!(result.similarity, 0.0);
     }
+
+    #[test]
+    fn test_euclidean_distance_identical() {
+        let a = Embedding {
+            values: vec![1.0, 2.0, 3.0],
+            model_version: None,
+        };
+        let b = Embedding {
+            values: vec![1.0, 2.0, 3.0],
+            model_version: None,
+        };
+        assert!(a.euclidean_distance(&b).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_euclidean_distance_orthogonal() {
+        let a = Embedding {
+            values: vec![1.0, 0.0],
+            model_version: None,
+        };
+        let b = Embedding {
+            values: vec![0.0, 1.0],
+            model_version: None,
+        };
+        assert!((a.euclidean_distance(&b) - 2.0_f32.sqrt()).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_euclidean_distance_opposite() {
+        let a = Embedding {
+            values: vec![1.0, 0.0],
+            model_version: None,
+        };
+        let b = Embedding {
+            values: vec![-1.0, 0.0],
+            model_version: None,
+        };
+        assert!((a.euclidean_distance(&b) - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_euclidean_distance_known() {
+        let a = Embedding {
+            values: vec![0.0, 0.0, 0.0],
+            model_version: None,
+        };
+        let b = Embedding {
+            values: vec![3.0, 4.0, 0.0],
+            model_version: None,
+        };
+        assert!((a.euclidean_distance(&b) - 5.0).abs() < 1e-6);
+    }
 }
