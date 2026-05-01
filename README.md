@@ -219,12 +219,16 @@ supported and detected automatically at device open.
 
 | Tier | Camera stack | Visage support | Examples |
 |------|-------------|----------------|---------|
-| **Supported** | UVC (`uvcvideo` driver) | ✅ Full support | ASUS ZenBook, ThinkPad T/X (pre-Gen 11), HP EliteBook (UVC configs), Dell Latitude (UVC configs), TUXEDO InfinityBook |
+| **Supported** | UVC IR (`uvcvideo` driver plus IR stream/emitter path) | ✅ Full support | ASUS ZenBook, ThinkPad T/X (pre-Gen 11), HP EliteBook (UVC IR configs), Dell Latitude (UVC IR configs), TUXEDO InfinityBook |
+| **Not secure-compatible** | UVC RGB-only webcam | ❌ Testing only; not for PAM auth | ASUS ExpertBook B3302FEA/B5302FEA built-in `13d3:56ea` |
 | **Not supported** | Intel IPU6 / MIPI / libcamera | ❌ Not yet | Newer Dell XPS, ThinkPad Gen 11+ (some configs), Intel "AI PC" cameras |
 | **No IR camera** | N/A | — | Framework, System76, Purism |
 
 **Not sure which your laptop has?** Run `visage discover` — it detects the kernel
-driver for each `/dev/video*` device and warns if an IPU6 camera is found.
+driver for each `/dev/video*` device and warns if an IPU6 camera is found. A
+normal RGB UVC webcam is not enough for secure auth; see the tested
+[ASUS ExpertBook B3302FEA report](docs/hardware-reports/asus-expertbook-b3302fea-13d3-56ea.md)
+for an example of an incompatible `uvcvideo` camera.
 
 **ThinkPad note:** ThinkPad T-series and X1 Carbon laptops frequently ship with a
 separate USB UVC IR camera alongside the RGB webcam. These typically appear as a

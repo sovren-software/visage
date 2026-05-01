@@ -12,7 +12,8 @@ Run `visage discover` to get the answer for your machine.
 
 | Camera stack | `visage discover` output | Visage support |
 |-------------|--------------------------|----------------|
-| USB UVC | `driver=uvcvideo` | ✅ Supported |
+| USB UVC IR | `driver=uvcvideo` plus an IR node/format or known emitter quirk | ✅ Supported |
+| USB UVC RGB-only | `driver=uvcvideo`, but only a normal webcam stream | ❌ Not secure-compatible |
 | Intel IPU6 | `driver=intel_ipu6*` | ❌ Not supported (v0.1) |
 | MIPI / libcamera | varies | ❌ Not supported (v0.1) |
 
@@ -40,6 +41,7 @@ Run `visage discover` to get the answer for your machine.
 
 | Brand / Line | Notes |
 |---|---|
+| **ASUS ExpertBook B3302FEA/B5302FEA** | Built-in Azurewave/IMC `13d3:56ea` camera is RGB-only UVC on tested hardware: `/dev/video0` captures MJPG/YUYV and `/dev/video1` is metadata only. No IR node, IR pixel format, Microsoft face-auth XU, or known emitter quirk was found. See [hardware report](hardware-reports/asus-expertbook-b3302fea-13d3-56ea.md). |
 | **Framework** 13 / 16 | Fingerprint only. No IR camera. |
 | **System76** (all models) | Standard RGB webcam only. |
 | **Purism Librem** | Privacy-focused; standard webcam with kill switch. |
@@ -65,6 +67,12 @@ A UVC IR camera looks like:
 /dev/video2  driver=uvcvideo  VID=0x04f2 PID=0xb6d9  quirk: ASUS Zenbook 14 UM3406HA IR Camera ✓
 ```
 
+A UVC RGB-only camera is not enough for secure Visage auth, even though the
+kernel driver is supported:
+```
+/dev/video0  driver=uvcvideo  VID=0x13d3 PID=0x56ea  no quirk (VID=0x13d3 PID=0x56ea)
+```
+
 An IPU6 camera looks like:
 ```
 /dev/video0  driver=intel_ipu6_imx_phy  [NOT SUPPORTED — IPU6 camera, not UVC]
@@ -72,6 +80,10 @@ An IPU6 camera looks like:
 
 If your IR camera appears as `driver=uvcvideo` but has `no quirk`, it may still work
 for enrollment and verification — the quirk is only needed for IR emitter activation.
+However, `uvcvideo` alone is not sufficient: a laptop that exposes only a normal
+RGB webcam stream is not compatible with Visage's intended secure authentication
+path. Check for a separate IR node, an IR-oriented pixel format (`GREY`/`Y16`),
+or a documented emitter quirk before enabling PAM auth.
 You can test without emitter support and contribute emitter bytes later via `contrib/hw/`.
 
 ---

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Documentation
+
+- Added ASUS ExpertBook B3302FEA/B5302FEA hardware validation showing the built-in
+  Azurewave/IMC `13d3:56ea` UVC webcam is RGB-only and not compatible with
+  Visage's secure IR-backed PAM authentication path.
+
 ## v0.3.0 — 2026-02-23
 
 ### What's changed
