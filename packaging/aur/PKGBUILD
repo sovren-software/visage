@@ -12,6 +12,8 @@ depends=('pam' 'dbus' 'systemd')
 makedepends=('rust' 'cargo' 'pkg-config')
 provides=('visage')
 conflicts=('visage')
+# LTO breaks ring's hand-written asm and rusqlite's bundled sqlite3 native objects
+options=(!lto !debug)
 install="$pkgname.install"
 # Preserve user data and face database across upgrades
 backup=('var/lib/visage/faces.db')
