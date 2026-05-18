@@ -140,17 +140,19 @@ See `packaging/nix/module.nix` for all options (`modelDir`, `camera`, `similarit
 ### Arch Linux (AUR)
 
 ```bash
-git clone https://aur.archlinux.org/visage.git
-cd visage && makepkg -si
+git clone https://aur.archlinux.org/visage-git.git (or visage/visage-bin for release)
+cd visage-git && makepkg -si
+sudo systemctl enable --now visaged visage-resume
 sudo visage setup
-sudo visage enroll --label default
+sudo visage enroll --label default --user <your_username>
+visage verify
 ```
 
 PAM requires a manual one-line edit on Arch — add before `pam_unix.so` in
 `/etc/pam.d/system-auth`:
 
 ```
-auth  [success=end default=ignore]  pam_visage.so
+auth  [success=done default=ignore]  pam_visage.so
 ```
 
 ### What the package does
