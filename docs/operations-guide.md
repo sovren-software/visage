@@ -276,6 +276,7 @@ The emitter quirks database lives in `contrib/hw/`. Currently supported:
 | Camera | VID | PID | File |
 |--------|-----|-----|------|
 | ASUS Zenbook 14 UM3406HA | `0x04F2` | `0xB6D9` | `04f2-b6d9.toml` |
+| Lenovo ThinkPad X1 Carbon Gen 9 20XW00FPUS | `0x174F` | `0x2454` | `174f-2454.toml` |
 
 For unsupported cameras, run `visage discover` to get the VID:PID, then follow the
 contribution guide at [contrib/hw/README.md](../contrib/hw/README.md).

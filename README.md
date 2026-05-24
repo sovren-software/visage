@@ -248,6 +248,7 @@ Confirmed quirk entries:
 | File | Device | Source |
 |------|--------|--------|
 | `04f2-b6d9.toml` | ASUS Zenbook 14 UM3406HA | Verified on hardware |
+| `174f-2454.toml` | Lenovo ThinkPad X1 Carbon Gen 9 20XW00FPUS | Verified on hardware |
 
 To add support for your camera, see [contrib/hw/README.md](contrib/hw/README.md).
 

@@ -103,6 +103,7 @@ VID:PID to the correct control bytes for each known device.
 | Device | VID:PID | Status |
 |--------|---------|--------|
 | ASUS Zenbook 14 UM3406HA | `04f2:b6d9` | ✅ Verified on hardware |
+| Lenovo ThinkPad X1 Carbon Gen 9 20XW00FPUS | `174f:2454` | ✅ Verified on hardware |
 
 **Contributing a quirk for your camera:**
 
