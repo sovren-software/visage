@@ -146,6 +146,7 @@ a `OnceLock<Vec<QuirkFile>>` at first access.
 | File | Camera | VID | PID |
 |------|--------|-----|-----|
 | `04f2-b6d9.toml` | ASUS Zenbook 14 UM3406HA | `0x04F2` | `0xB6D9` |
+| `174f-2454.toml` | Lenovo ThinkPad X1 Carbon Gen 9 20XW00FPUS | `0x174F` | `0x2454` |
 
 ### Device Discovery
 
