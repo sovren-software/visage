@@ -96,7 +96,7 @@ Merge-committed via PR #29 (per CONTRIBUTING.md "Hardware quirks: Merge commit")
 
 Squash-merged via PR #25. Fixes the link-time `undefined symbol: ring_core_0_17_14__LIMBS_window5_split_window` (and many more from `ring` + `libsqlite3-sys`) failure on Arch's stock `makepkg.conf` (which defaults to `OPTIONS=(... lto ...)`). Root cause: LTO operates on LLVM IR, but `ring` ships hand-written assembly via `cc` and `libsqlite3-sys` (rusqlite's `bundled` feature) compiles `sqlite3.c` via `cc` — neither produces LTO-compatible IR. Reported and fixed by @SomeCodecat.
 
-### 7. Close the v0.1.0-era `sha256sums=('SKIP')` TODO in `packaging/aur/PKGBUILD`
+### 7. Close the v0.1.0-era `sha256sums=('SKIP')` reminder in `packaging/aur/PKGBUILD`
 
 This ADR ships alongside the `SKIP` → real-hash fix. The PKGBUILD now declares the SHA-256 of the v0.3.3 source tarball at `github.com/sovren-software/visage/archive/refs/tags/v0.3.3.tar.gz`. `makepkg` will reject any tampered or corrupted download.
 
@@ -141,7 +141,7 @@ Closed: `ort` 2.0.0-rc.11 → 2.0.0-rc.12 (#20). CI failed on rc.12 — likely A
 
 **Trade-off accepted:** Source URL is still `https://github.com/sovren-software/visage/archive/refs/tags/v$pkgver.tar.gz` (GitHub's git-archive endpoint). GitHub has historically (in 2023) changed git-archive compression behavior, breaking many projects' AUR PKGBUILDs that had pinned hashes. If that happens again, our hash will mismatch and AUR users will see a `makepkg` integrity error.
 
-**Benefit:** Closes the v0.1.0-era TODO without introducing a release-asset tarball generator. AUR integrity check is now active for the v0.3.3 tarball. The bump-procedure comment in the PKGBUILD documents how to re-verify on future bumps.
+**Benefit:** Closes the v0.1.0-era follow-up without introducing a release-asset tarball generator. AUR integrity check is now active for the v0.3.3 tarball. The bump-procedure comment in the PKGBUILD documents how to re-verify on future bumps.
 
 **Alternative not chosen:** Add a tarball generation step to `.github/workflows/ci.yml`'s `release` job (produce a deterministic `.tar.gz` asset on each release tag, point the PKGBUILD source URL at that asset). More work; defer to v0.4 packaging arc if GitHub changes git-archive again.
 
