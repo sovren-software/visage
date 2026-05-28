@@ -600,7 +600,7 @@ enforces the same checksums at startup (fail-closed). See [ADR 009](decisions/00
 The pam-auth-update profile places Visage at priority 900:
 
 ```
-[success=end default=ignore]    pam_visage.so
+[success=done default=ignore]    pam_visage.so
 ```
 
 - Face match (`PAM_SUCCESS`) → authentication succeeds, skips password

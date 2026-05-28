@@ -4,6 +4,20 @@
 
 ### Fixed
 
+- **PAM control keyword corrected: `success=end` → `success=done` across all 9 sites.**
+  `pam.conf(5)` documents exactly `ignore | bad | die | ok | done | reset | N` —
+  `end` is not a valid keyword. libpam logged a warning and treated it as
+  `ignore`, meaning a successful face match silently fell through to the next
+  rule (typically `pam_unix.so` → password prompt) instead of terminating the
+  auth stack with success. Affected: `README.md`, `docs/operations-guide.md`,
+  `docs/architecture.md`, `packaging/debian/pam-auth-update` (Ubuntu),
+  `packaging/nix/module.nix` (NixOS — `sudo` and `login` rules), and several
+  research docs. Caught by @SelfRef in #27. **Note for existing users:** if your
+  PAM stack still references the old keyword (e.g. you manually edited
+  `/etc/pam.d/system-auth` on Arch from the prior README, or you're on an old
+  Debian/Ubuntu install that hasn't re-run `pam-auth-update`), face auth has
+  been working as if Visage weren't installed — replace `success=end` with
+  `success=done` and re-test.
 - **`visaged` now handles SIGTERM correctly.** The shutdown signal handler in
   `crates/visaged/src/main.rs` previously relied on `tokio::signal::ctrl_c()`,
   which is SIGINT-only on Unix. `systemctl stop` / `systemctl restart` (and

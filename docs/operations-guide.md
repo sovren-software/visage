@@ -114,7 +114,7 @@ PAM is **not** configured automatically on Arch. Add the following line **before
 for sudo only):
 
 ```
-auth  [success=end default=ignore]  pam_visage.so
+auth  [success=done default=ignore]  pam_visage.so
 ```
 
 Then complete setup:
@@ -416,7 +416,7 @@ Output:
 grep pam_visage /etc/pam.d/common-auth
 ```
 
-Should show: `auth [success=end default=ignore] pam_visage.so`
+Should show: `auth [success=done default=ignore] pam_visage.so`
 
 If missing, run: `sudo pam-auth-update` and enable Visage.
 

@@ -3,4 +3,4 @@ Default: yes
 Priority: 900
 Auth-Type: Primary
 Auth:
-        [success=end default=ignore]    pam_visage.so
+        [success=done default=ignore]    pam_visage.so

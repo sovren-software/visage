@@ -525,7 +525,7 @@ Measure time from `Verify()` D-Bus call to response, with model pre-loaded:
 3. **CLAHE histogram equalization** — Essential for IR frame quality
 4. **Dark frame histogram filter** — Cheap and effective IR warm-up detection
 5. **Parallel model loading + camera init** — Hide latency behind I/O
-6. **PAM `[success=end default=ignore]`** — Correct fallback semantics
+6. **PAM `[success=done default=ignore]`** — Correct fallback semantics
 7. **L2 distance matching** — Correct metric for dlib embeddings (cosine for ArcFace)
 8. **Per-model metadata (id, timestamp, label)** — Useful for management
 9. **Rubberstamps plugin concept** — Extensible post-auth verification
