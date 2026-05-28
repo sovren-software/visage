@@ -150,7 +150,7 @@ PAM requires a manual one-line edit on Arch — add before `pam_unix.so` in
 `/etc/pam.d/system-auth`:
 
 ```
-auth  [success=end default=ignore]  pam_visage.so
+auth  [success=done default=ignore]  pam_visage.so
 ```
 
 ### What the package does

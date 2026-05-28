@@ -173,7 +173,7 @@ of UVC control bytes are the adoption growth path.
 |------------|---------------|
 | Split daemon into privileged broker + unprivileged inference worker | Over-engineering for v1.0. systemd hardening provides equivalent protection. Revisit when CVE risk in ort is demonstrated. |
 | libcamera support | Windows Hello IR cameras are UVC devices, accessible via V4L2. libcamera targets MIPI/ISP pipelines (RPi, embedded). Add when a user submits a device that needs it. |
-| Multi-factor orchestration and risk tiers | Enterprise PAM policy territory. PAM stack already handles this — `[success=end default=ignore]` is the orchestration. Not Visage's job. |
+| Multi-factor orchestration and risk tiers | Enterprise PAM policy territory. PAM stack already handles this — `[success=done default=ignore]` is the orchestration. Not Visage's job. |
 | Polkit integration | Desktop integration milestone 5+. Core PAM → D-Bus → daemon path works without it. |
 | ONNX Runtime distribution strategy | The `ort` crate handles this (download-on-build or system library detection). Packaging concern, not architecture. Address during packaging milestone. |
 
@@ -318,7 +318,7 @@ control = [1, 3, 3, 0, 0, 0, 0, 0, 0]
 - `.deb` package via `cargo-deb` — configured in `crates/visaged/Cargo.toml`
 - `packaging/systemd/visaged.service` — hardened unit (ProtectSystem=strict, DeviceAllow,
   CapabilityBoundingSet empty, MemoryDenyWriteExecute=false for ONNX Runtime JIT)
-- `packaging/debian/pam-auth-update` — pam-configs profile, priority 900, `[success=end default=ignore]`
+- `packaging/debian/pam-auth-update` — pam-configs profile, priority 900, `[success=done default=ignore]`
 - `packaging/debian/postinst` — creates `/var/lib/visage`, runs `pam-auth-update --package`, enables service
 - `packaging/debian/prerm` — stops service, runs `pam-auth-update --remove`
 - `packaging/debian/postrm` — purges `/var/lib/visage` on `apt purge`
