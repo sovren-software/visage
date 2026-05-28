@@ -19,7 +19,7 @@
 
 rustPlatform.buildRustPackage {
   pname = "visage";
-  version = "0.3.0";
+  version = "0.3.2";
 
   src = lib.cleanSource ../..;
 

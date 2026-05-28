@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.3.2 — 2026-05-28
+
 ### Fixed
 
 - **PAM control keyword corrected: `success=end` → `success=done` across all 9 sites.**
