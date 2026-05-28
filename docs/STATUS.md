@@ -1,7 +1,7 @@
 # Visage v0.3 Release Status
 
-**Last updated:** 2026-02-25
-**Build state:** v0.3.0 shipped and validated locally. All 6 implementation steps complete + model integrity enforcement + OSS governance + passive liveness detection. End-to-end tested on Ubuntu 24.04.4 LTS (v0.1.0 → v0.3.0 upgrade path verified 2026-02-24). Passive liveness awaits cargo build/test validation and manual spoof testing on hardware.
+**Last updated:** 2026-05-28
+**Build state:** v0.3.3 shipped. All 6 implementation steps complete + model integrity enforcement + OSS governance + passive liveness detection + post-v0.3.0 bug fix wave (PAM `success=` keyword corrected, `visaged` SIGTERM handler, `visaged.service` `TimeoutStopSec=10s`). End-to-end tested on Ubuntu 24.04.4 LTS. IR emitter quirks DB now covers ASUS Zenbook 14 UM3406HA and Lenovo ThinkPad X1 Carbon Gen 9 20XW00FPUS. Passive liveness still awaits manual spoof testing on hardware.
 
 ---
 
@@ -13,7 +13,7 @@
 | 2 | ONNX inference (`visage-core`) | ✅ Complete — SCRFD detection, ArcFace recognition, face alignment |
 | 3 | Daemon + D-Bus + SQLite (`visaged`) | ✅ Complete — persistent daemon, 5-method API, WAL store |
 | 4 | PAM module (`pam-visage`) | ✅ Complete — PAM_IGNORE fallback, system bus, FFI safe |
-| 5 | IR emitter (`visage-hw`) | ✅ Complete — UVC extension unit, quirks DB, ASUS Zenbook |
+| 5 | IR emitter (`visage-hw`) | ✅ Complete — UVC extension unit, quirks DB (ASUS Zenbook 14, Lenovo X1 Carbon Gen 9) |
 | 6 | Packaging | ✅ Complete — .deb, systemd, pam-auth-update, `visage setup` |
 | 7 | Model integrity (`visage-models`) | ✅ Complete — pinned SHA-256, fail-closed daemon startup, shared manifest |
 | 8 | Passive liveness (`visage-core`, `visaged`) | ⚠️ Code complete — landmark stability check; awaits `cargo check`/test + hardware spoof validation |

@@ -19,10 +19,13 @@ Linux-PAM — no kernel patches, no modified sudo.
 
 ## Status
 
-**v0.3.0 — feature-complete, end-to-end tested on Ubuntu 24.04.4 LTS.**
+**v0.3.3 — feature-complete, end-to-end tested on Ubuntu 24.04.4 LTS.**
 
 All 6 implementation steps complete. Verified: enroll, verify, PAM/sudo integration,
 systemd hardening, D-Bus access control, install/remove/purge lifecycle, suspend/resume.
+v0.3.3 expands IR emitter coverage to Lenovo ThinkPad X1 Carbon Gen 9 and ships bug
+fixes for the post-hibernate `systemctl restart` path and the PAM `success=` control
+keyword. See [CHANGELOG](CHANGELOG.md) for the full v0.3.1–v0.3.3 history.
 
 | Step | Component | Status |
 |------|-----------|--------|
