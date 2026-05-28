@@ -32,22 +32,39 @@ Linux deserves a biometric authentication layer that is **reliable, secure, and 
 
 ---
 
-## Where We Are: v0.3.0
+## Where We Are: v0.3.3
 
-**Shipped 2026-02-23. All 6 implementation steps complete. End-to-end tested on Ubuntu 24.04.4 LTS.**
+**Shipped 2026-05-28. Bug-fix release wave (v0.3.2 → v0.3.3) on top of the v0.3.0 foundation.**
+
+v0.3.0 (2026-02-23) shipped all 6 implementation steps end-to-end on Ubuntu 24.04.4 LTS.
+The v0.3.x point releases since then addressed two silent ship-time bugs and added
+broader hardware + packaging coverage:
+
+- **v0.3.2 (2026-05-28)** — fixed `PAM success=end → success=done` keyword (libpam was
+  silently treating the unknown keyword as `ignore` since v0.1.0, so face auth was a
+  silent no-op on the documented setup paths). Closed Issue #26 — `visaged` now handles
+  SIGTERM correctly, dropping the ~90s post-hibernate `systemctl restart` hang to ~10s.
+- **v0.3.3 (2026-05-28)** — Lenovo X1 Carbon Gen 9 IR camera quirk (second
+  Tier-1-verified hardware target after ASUS Zenbook 14 UM3406HA); AUR `!lto !debug`
+  fix so `makepkg -si` succeeds on stock Arch; devshell parity with CI;
+  7 dependency bumps.
 
 | Component | What it delivers |
 |-----------|-----------------|
-| `visage-hw` | V4L2 capture, GREY/YUYV/Y16 format detection, CLAHE preprocessing, dark frame rejection |
+| `visage-hw` | V4L2 capture, GREY/YUYV/Y16 format detection, CLAHE preprocessing, dark frame rejection. Quirks DB covers ASUS Zenbook 14 + Lenovo X1 Carbon Gen 9 |
 | `visage-core` | SCRFD face detection + ArcFace recognition via ONNX Runtime — CPU-capable, no CUDA required |
-| `visaged` | Persistent daemon — holds camera and model weights across auth requests, D-Bus IPC, SQLite WAL |
-| `pam-visage` | Thin PAM module — `PAM_IGNORE` fallback, never blocks, system bus |
-| IR emitter | UVC extension unit control, hardware quirks database, ASUS Zenbook 14 UM3406HA confirmed |
-| Packaging | `.deb` with `pam-auth-update`, systemd hardening, AES-256-GCM embeddings at rest |
+| `visaged` | Persistent daemon — holds camera and model weights across auth requests, D-Bus IPC, SQLite WAL. SIGINT + SIGTERM shutdown handlers; `TimeoutStopSec=10s` defense in depth |
+| `pam-visage` | Thin PAM module — `PAM_IGNORE` fallback, never blocks, system bus. `[success=done default=ignore]` control flow (corrected v0.3.2) |
+| IR emitter | UVC extension unit control, hardware quirks database |
+| Packaging | `.deb` with `pam-auth-update`, AUR `!lto !debug` PKGBUILD with verified `sha256sums`, NixOS module, systemd hardening, AES-256-GCM embeddings at rest |
 
 Visage authenticates in ~1.4s on CPU with a USB webcam. Howdy's Python subprocess cold-start
 is 2-3s. Visage is already faster — without IR camera or GPU — because model weights are
 loaded once at daemon start, not per attempt. That is the architectural advantage.
+
+See [ADR 012](decisions/012-post-launch-stabilization-v0.3.2-v0.3.3.md) for the full
+v0.3.x stabilization context, the rationale behind each fix, and the trade-offs
+accepted.
 
 ---
 
