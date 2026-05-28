@@ -87,8 +87,21 @@ async fn main() -> Result<()> {
         "visaged ready — listening on org.freedesktop.Visage1"
     );
 
-    // 5. Wait for shutdown signal
-    tokio::signal::ctrl_c().await?;
+    // 5. Wait for shutdown signal (SIGINT or SIGTERM).
+    // systemd's `systemctl stop|restart` sends SIGTERM, which `tokio::signal::ctrl_c`
+    // does not catch — so a ctrl_c-only handler stalls until `TimeoutStopSec` (default
+    // 90s) elapses and systemd escalates to SIGKILL. See issue #26.
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut sigterm =
+            signal(SignalKind::terminate()).context("failed to install SIGTERM handler")?;
+        let mut sigint =
+            signal(SignalKind::interrupt()).context("failed to install SIGINT handler")?;
+        tokio::select! {
+            _ = sigterm.recv() => tracing::info!(signal = "SIGTERM", "received shutdown signal"),
+            _ = sigint.recv()  => tracing::info!(signal = "SIGINT",  "received shutdown signal"),
+        }
+    }
     tracing::info!("visaged shutting down");
 
     Ok(())

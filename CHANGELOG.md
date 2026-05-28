@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Fixed
+
+- **`visaged` now handles SIGTERM correctly.** The shutdown signal handler in
+  `crates/visaged/src/main.rs` previously relied on `tokio::signal::ctrl_c()`,
+  which is SIGINT-only on Unix. `systemctl stop` / `systemctl restart` (and
+  `visage-resume.service` after suspend/hibernate) send SIGTERM, which the daemon
+  ignored — systemd then waited the default `TimeoutStopSec=90s` before escalating
+  to SIGKILL, manifesting as a ~90s hang on `systemctl restart visaged.service`
+  after hibernate resume. Visaged now installs handlers for both SIGINT and SIGTERM
+  via `tokio::signal::unix::signal` and shuts down cleanly. Fixes #26.
+- **`visaged.service` adds `TimeoutStopSec=10s`** as defense in depth — covers the
+  edge case where a v4l2 capture is mid-flight and not promptly interruptible
+  (e.g. a stale camera fd after hibernate resume). Fixes #26.
+
 ### Documentation
 
 - Added ASUS ExpertBook B3302FEA/B5302FEA hardware validation showing the built-in
