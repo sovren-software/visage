@@ -93,10 +93,10 @@ async fn main() -> Result<()> {
     // 90s) elapses and systemd escalates to SIGKILL. See issue #26.
     {
         use tokio::signal::unix::{signal, SignalKind};
-        let mut sigterm = signal(SignalKind::terminate())
-            .context("failed to install SIGTERM handler")?;
-        let mut sigint = signal(SignalKind::interrupt())
-            .context("failed to install SIGINT handler")?;
+        let mut sigterm =
+            signal(SignalKind::terminate()).context("failed to install SIGTERM handler")?;
+        let mut sigint =
+            signal(SignalKind::interrupt()).context("failed to install SIGINT handler")?;
         tokio::select! {
             _ = sigterm.recv() => tracing::info!(signal = "SIGTERM", "received shutdown signal"),
             _ = sigint.recv()  => tracing::info!(signal = "SIGINT",  "received shutdown signal"),
