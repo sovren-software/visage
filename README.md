@@ -143,11 +143,13 @@ See `packaging/nix/module.nix` for all options (`modelDir`, `camera`, `similarit
 ### Arch Linux (AUR)
 
 ```bash
-git clone https://aur.archlinux.org/visage-git.git (or visage/visage-bin for release)
-cd visage-git && makepkg -si
+git clone https://aur.archlinux.org/visage.git
+# visage-git and visage-bin are also available
+cd visage && makepkg -si
 sudo systemctl enable --now visaged visage-resume
 sudo visage setup
-sudo visage enroll --label default --user <your_username>
+sudo visage enroll --label default
+# add --user <username> to enroll for someone else
 visage verify
 ```
 
