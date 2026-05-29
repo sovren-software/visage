@@ -2,7 +2,7 @@
 # https://github.com/sovren-software/visage
 
 pkgname=visage
-pkgver=0.3.0
+pkgver=0.3.3
 pkgrel=1
 pkgdesc="Linux face authentication via PAM — persistent daemon, IR camera support, ONNX inference"
 arch=('x86_64')
@@ -12,12 +12,17 @@ depends=('pam' 'dbus' 'systemd')
 makedepends=('rust' 'cargo' 'pkg-config')
 provides=('visage')
 conflicts=('visage')
+# LTO breaks ring's hand-written asm and rusqlite's bundled sqlite3 native objects
+options=(!lto !debug)
 install="$pkgname.install"
 # Preserve user data and face database across upgrades
 backup=('var/lib/visage/faces.db')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/sovren-software/visage/archive/refs/tags/v$pkgver.tar.gz")
-# TODO: compute real sha256sum at release time: sha256sum visage-0.3.0.tar.gz
-sha256sums=('SKIP')
+# sha256 of the v$pkgver tarball at github.com/sovren-software/visage/archive/refs/tags/v$pkgver.tar.gz
+# Compute via:
+#   curl -fsSL https://github.com/sovren-software/visage/archive/refs/tags/v$pkgver.tar.gz | sha256sum
+# Must be re-computed on every pkgver bump.
+sha256sums=('e018fcc08dbb3aba381306424fc1fd94eaddc0a5da0d47437f17487f29b76f99')
 
 build() {
     cd "$pkgname-$pkgver"

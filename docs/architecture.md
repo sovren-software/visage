@@ -146,6 +146,7 @@ a `OnceLock<Vec<QuirkFile>>` at first access.
 | File | Camera | VID | PID |
 |------|--------|-----|-----|
 | `04f2-b6d9.toml` | ASUS Zenbook 14 UM3406HA | `0x04F2` | `0xB6D9` |
+| `174f-2454.toml` | Lenovo ThinkPad X1 Carbon Gen 9 20XW00FPUS | `0x174F` | `0x2454` |
 
 ### Device Discovery
 
@@ -600,7 +601,7 @@ enforces the same checksums at startup (fail-closed). See [ADR 009](decisions/00
 The pam-auth-update profile places Visage at priority 900:
 
 ```
-[success=end default=ignore]    pam_visage.so
+[success=done default=ignore]    pam_visage.so
 ```
 
 - Face match (`PAM_SUCCESS`) → authentication succeeds, skips password

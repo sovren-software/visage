@@ -184,12 +184,12 @@ in
     security.pam.services = lib.mkIf cfg.pam.enable {
       sudo.rules.auth.visage = {
         order = 900;
-        control = "[success=end default=ignore]";
+        control = "[success=done default=ignore]";
         modulePath = "${cfg.package}/lib/security/pam_visage.so";
       };
       login.rules.auth.visage = {
         order = 900;
-        control = "[success=end default=ignore]";
+        control = "[success=done default=ignore]";
         modulePath = "${cfg.package}/lib/security/pam_visage.so";
       };
       # Screen lockers (swaylock, hyprlock, etc.) use their own PAM service.

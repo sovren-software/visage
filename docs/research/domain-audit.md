@@ -280,7 +280,7 @@ No new knowledge base needed. These are straightforward implementation tasks.
 
 **Complexity:** Medium
 
-Profile file at `/usr/share/pam-configs/visage`. Use `Auth-Type: Primary` and `[success=end default=ignore]` flags (not `sufficient`).
+Profile file at `/usr/share/pam-configs/visage`. Use `Auth-Type: Primary` and `[success=done default=ignore]` flags (not `sufficient`).
 
 **Risk:** If `postinst` fails mid-execution with a partially modified PAM stack, the system may be in a broken auth state. Use `set -e` in postinst. Test on a clean Ubuntu 24.04 VM as the first thing in Step 6.
 
