@@ -11,6 +11,8 @@ use std::sync::OnceLock;
 const QUIRK_04F2_B6D9: &str = include_str!("../../../contrib/hw/04f2-b6d9.toml");
 /// Compile-time embedded quirk for the Lenovo ThinkPad X1 Carbon Gen 9 20XW00FPUS IR camera.
 const QUIRK_174F_2454: &str = include_str!("../../../contrib/hw/174f-2454.toml");
+/// Compile-time embedded quirk for the Lenovo ThinkBook 14 MP2PQAZG IR camera.
+const QUIRK_30C9_00C2: &str = include_str!("../../../contrib/hw/30c9-00c2.toml");
 
 static QUIRK_DB: OnceLock<Vec<QuirkFile>> = OnceLock::new();
 
@@ -45,7 +47,7 @@ pub type CameraQuirk = QuirkFile;
 fn quirk_db() -> &'static Vec<QuirkFile> {
     QUIRK_DB.get_or_init(|| {
         let mut db = Vec::new();
-        for src in [QUIRK_04F2_B6D9, QUIRK_174F_2454] {
+        for src in [QUIRK_04F2_B6D9, QUIRK_174F_2454, QUIRK_30C9_00C2] {
             match toml::from_str::<QuirkFile>(src) {
                 Ok(q) => db.push(q),
                 Err(e) => eprintln!("visage-hw: bad quirk TOML: {e}"),
