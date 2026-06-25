@@ -42,7 +42,7 @@ pub struct EmitterInfo {
     /// Zeros of the same length deactivate it.
     pub control_bytes: Vec<u8>,
     /// Payload bytes sent to deactivate the emitter.
-    /// Defaults to zeros of `control_bytes` lenghth.
+    /// Defaults to zeros of `control_bytes` length.
     #[serde(default)]
     pub off_bytes: Option<Vec<u8>>,
     /// Flag `true` for cameras that reset the XU control when the controlling fd closes,
