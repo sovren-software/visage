@@ -1,0 +1,19 @@
+[device]
+vendor_id  = 0x30C9
+product_id = 0x0120
+name       = "HP OmniBook X Flip IR Camera (Luxvisions 30c9:0120)"
+
+[emitter]
+# Discovered via UVC XU probe: IR function extension unit 14,
+# GUID 0f3f95dc-2632-4c4e-92c9-a04782f43bc8 (Windows Hello IR control).
+# selector 6, len 9. cur/def=[1,3,1] (off), max=[1,3,3] (on).
+unit     = 14
+selector = 6
+control_bytes = [1, 3, 3, 0, 0, 0, 0, 0, 0]
+# This camera rejects an all-zero "off" payload (ERANGE) and would stay lit;
+# its real off/default value is [1,3,1,...].
+off_bytes     = [1, 3, 1, 0, 0, 0, 0, 0, 0]
+# This camera resets the XU control the instant the controlling fd closes and
+# only re-illuminates on a fresh open->set edge, so the emitter holds one fd
+# open for the duration of each capture (open in activate, close in deactivate).
+reset_on_close = true

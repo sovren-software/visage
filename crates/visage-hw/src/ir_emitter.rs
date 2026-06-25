@@ -5,6 +5,8 @@
 //! `linux-enable-ir-emitter` dependency.
 
 use crate::quirks::{get_usb_ids, lookup_quirk, CameraQuirk};
+use std::cell::RefCell;
+use std::fs::{File, OpenOptions};
 use std::os::unix::io::AsRawFd;
 use thiserror::Error;
 
@@ -40,6 +42,9 @@ const _SIZE_ASSERT: () = assert!(
 pub struct IrEmitter {
     device_path: String,
     quirk: &'static CameraQuirk,
+
+    /// Additional options for cameras with special file descriptor (fd) rules
+    active_fd: RefCell<Option<File>>,
 }
 
 #[derive(Debug, Error)]
@@ -62,6 +67,7 @@ impl IrEmitter {
         Some(Self {
             device_path: device_path.to_string(),
             quirk,
+            active_fd: RefCell::new(None),
         })
     }
 
@@ -69,13 +75,42 @@ impl IrEmitter {
     pub fn activate(&self) -> Result<(), EmitterError> {
         tracing::debug!(device = %self.device_path, "activating IR emitter");
         let mut payload = self.quirk.emitter.control_bytes.clone();
+
+        // reset_on_close devices forget the control the moment the fd closes,
+        // so open a fresh fd, set it, and hold it open until deactivate().
+        if self.quirk.emitter.reset_on_close {
+            self.active_fd.borrow_mut().take(); // drop any stale fd first
+            let file = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&self.device_path)
+                .map_err(EmitterError::Open)?;
+            let result = Self::send_via_fd(&file, self.quirk, &mut payload);
+            *self.active_fd.borrow_mut() = Some(file);
+            return result;
+        }
+
+        // Default: open, set the control, close.
         self.send_uvc_control(&mut payload)
     }
 
-    /// Deactivate the IR emitter by sending zeros of the same length.
+    /// Deactivate the IR emitter after a capture.
     pub fn deactivate(&self) -> Result<(), EmitterError> {
         tracing::debug!(device = %self.device_path, "deactivating IR emitter");
-        let mut payload = vec![0u8; self.quirk.emitter.control_bytes.len()];
+        let mut payload = self.off_payload();
+
+        // reset_on_close devices reset the control when the fd closes, so send
+        // "off" through the held fd, then close it to return control to default.
+        if self.quirk.emitter.reset_on_close {
+            let result = match self.active_fd.borrow().as_ref() {
+                Some(file) => Self::send_via_fd(file, self.quirk, &mut payload),
+                None => Ok(()),
+            };
+            self.active_fd.borrow_mut().take();
+            return result;
+        }
+
+        // Default: open, send "off", close.
         self.send_uvc_control(&mut payload)
     }
 
@@ -89,18 +124,35 @@ impl IrEmitter {
         &self.quirk.device.name
     }
 
+    /// Deactivate IR emitter by sending zeros of `control_bytes` length or
+    /// send explicit `off_bytes` when provided for cameras that require them.
+    fn off_payload(&self) -> Vec<u8> {
+        match &self.quirk.emitter.off_bytes {
+            Some(off) if !off.is_empty() => off.clone(),
+            _ => vec![0u8; self.quirk.emitter.control_bytes.len()],
+        }
+    }
+
+    /// Open a second fd here rather than requiring `AsRawFd` on `Camera`.
+    /// Open with read+write, send one control, close (default)
     fn send_uvc_control(&self, payload: &mut [u8]) -> Result<(), EmitterError> {
-        // Open the device with read+write access — needed for UVC ioctls.
-        // We open a second fd here rather than requiring AsRawFd on Camera.
-        let file = std::fs::OpenOptions::new()
+        let file = OpenOptions::new()
             .read(true)
             .write(true)
             .open(&self.device_path)
             .map_err(EmitterError::Open)?;
+        Self::send_via_fd(&file, self.quirk, payload)
+    }
 
+    /// Send one UVC `SET_CUR` control over an already-open fd.
+    fn send_via_fd(
+        file: &File,
+        quirk: &CameraQuirk,
+        payload: &mut [u8],
+    ) -> Result<(), EmitterError> {
         let mut query = UvcXuControlQuery {
-            unit: self.quirk.emitter.unit,
-            selector: self.quirk.emitter.selector,
+            unit: quirk.emitter.unit,
+            selector: quirk.emitter.selector,
             query: UVC_SET_CUR,
             _pad0: 0,
             size: payload.len() as u16,
