@@ -13,6 +13,8 @@ const QUIRK_04F2_B6D9: &str = include_str!("../../../contrib/hw/04f2-b6d9.toml")
 const QUIRK_174F_2454: &str = include_str!("../../../contrib/hw/174f-2454.toml");
 /// Compile-time embedded quirk for the Lenovo ThinkBook 14 MP2PQAZG IR camera.
 const QUIRK_30C9_00C2: &str = include_str!("../../../contrib/hw/30c9-00c2.toml");
+/// Compile-time embedded quirk for the HP OmniBook X Flip IR camera (Luxvisions 30c9:0120).
+const QUIRK_30C9_0120: &str = include_str!("../../../contrib/hw/30c9-0120.toml");
 
 static QUIRK_DB: OnceLock<Vec<QuirkFile>> = OnceLock::new();
 
@@ -39,6 +41,14 @@ pub struct EmitterInfo {
     /// Payload bytes sent to activate the emitter.
     /// Zeros of the same length deactivate it.
     pub control_bytes: Vec<u8>,
+    /// Payload bytes sent to deactivate the emitter.
+    /// Defaults to zeros of `control_bytes` lenghth.
+    #[serde(default)]
+    pub off_bytes: Option<Vec<u8>>,
+    /// Flag `true` for cameras that reset the XU control when the controlling fd closes,
+    /// making `IrEmitter` hold an fd open for the duration of each capture.
+    #[serde(default)]
+    pub reset_on_close: bool,
 }
 
 /// Public alias used by `IrEmitter`.
@@ -47,7 +57,7 @@ pub type CameraQuirk = QuirkFile;
 fn quirk_db() -> &'static Vec<QuirkFile> {
     QUIRK_DB.get_or_init(|| {
         let mut db = Vec::new();
-        for src in [QUIRK_04F2_B6D9, QUIRK_174F_2454, QUIRK_30C9_00C2] {
+        for src in [QUIRK_04F2_B6D9, QUIRK_174F_2454, QUIRK_30C9_00C2, QUIRK_30C9_0120] {
             match toml::from_str::<QuirkFile>(src) {
                 Ok(q) => db.push(q),
                 Err(e) => eprintln!("visage-hw: bad quirk TOML: {e}"),

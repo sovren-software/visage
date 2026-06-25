@@ -28,6 +28,8 @@ control_bytes = [1, 3, 3, 0, 0, 0, 0, 0, 0]
 | `[emitter]` | `unit` | u8 | UVC extension unit ID |
 | `[emitter]` | `selector` | u8 | UVC control selector |
 | `[emitter]` | `control_bytes` | byte array | Payload to activate the emitter. Zeros of the same length deactivate it. |
+| `[emitter]` | `off_bytes` | byte array | Optional. Explicit payload to deactivate the emitter. Needed for cameras that reject an all-zero "off" payload (e.g. with `ERANGE`). Defaults to zeros of `control_bytes` length when omitted. |
+| `[emitter]` | `reset_on_close` | bool | Optional. Set `true` for cameras that reset the control when the controlling fd closes and only re-illuminate on a fresh open→set edge; the emitter then holds one fd open for the duration of each capture. Defaults to `false`. |
 
 The `control_bytes` values are found via `linux-enable-ir-emitter configure` or UVC descriptor analysis.
 
