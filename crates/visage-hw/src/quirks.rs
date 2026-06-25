@@ -57,7 +57,12 @@ pub type CameraQuirk = QuirkFile;
 fn quirk_db() -> &'static Vec<QuirkFile> {
     QUIRK_DB.get_or_init(|| {
         let mut db = Vec::new();
-        for src in [QUIRK_04F2_B6D9, QUIRK_174F_2454, QUIRK_30C9_00C2, QUIRK_30C9_0120] {
+        for src in [
+            QUIRK_04F2_B6D9,
+            QUIRK_174F_2454,
+            QUIRK_30C9_00C2,
+            QUIRK_30C9_0120,
+        ] {
             match toml::from_str::<QuirkFile>(src) {
                 Ok(q) => db.push(q),
                 Err(e) => eprintln!("visage-hw: bad quirk TOML: {e}"),
