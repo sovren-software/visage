@@ -55,7 +55,7 @@ ort = "2.0.0-rc.11"
 ndarray = "0.17"
 
 # Cryptography (embedding encryption)
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 rand = "0.8"
 sha2 = "0.10"
 
