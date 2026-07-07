@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## v0.3.5 — 2026-07-07
+
+### Added
+
+- **Hardware support: HP OmniBook X Flip IR camera** (`30c9:0120`, Luxvisions).
+  Contributed by @mocha in #47. Adds an IR-emitter quirk-schema extension
+  (`off_bytes`, `reset_on_close`) for devices whose emitter rejects an all-zero
+  "off" write (`ERANGE`); existing quirk files are unaffected (both fields
+  default). Quirk file: `contrib/hw/30c9-0120.toml`.
+- **Hardware support: Lenovo ThinkBook 14 MP2PQAZG IR camera** (`30c9:00c2`).
+  Contributed in #45 (previously not captured in the changelog). Quirk file:
+  `contrib/hw/30c9-00c2.toml`.
+
+### Security
+
+- **`openssl` 0.10.75 → 0.10.81** and **`rustls-webpki` 0.103.9 → 0.103.13**
+  (Dependabot security updates, #60 / #59) — pull RustSec-advisory fixes into
+  the TLS dependency chain (`ort` → `ureq`).
+
 ## v0.3.4 — 2026-07-07
 
 ### Fixed
