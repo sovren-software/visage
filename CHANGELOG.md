@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.3.4 — 2026-07-07
+
 ### Fixed
 
 - **NixOS / Nix flake build: add `openssl` to `buildInputs`** (issue #38). The
@@ -24,6 +26,19 @@
   camera in-process after repeated capture failures instead of requiring a
   restart. The per-capture stream is retained, so the camera is still released
   between verifies and remains usable by other applications.
+- **AUR install hook: corrected PAM keyword `success=end` → `success=done`.**
+  `packaging/aur/visage.install` still printed the setup guidance with the
+  invalid `[success=end …]` action — the same bug fixed everywhere else in
+  v0.3.2. libpam treats the unknown `end` as `ignore`, so a user following the
+  printed line verbatim would get a silent face-auth no-op. Now prints
+  `[success=done default=ignore]`.
+
+### Security
+
+- **CI: added a scheduled `cargo audit` workflow** (`.github/workflows/audit.yml`).
+  It scans `Cargo.lock` against the RustSec advisory database weekly and on
+  demand, surfacing dependency advisories without waiting for a manual check.
+
 ## v0.3.3 — 2026-05-28
 
 ### Added
