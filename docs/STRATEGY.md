@@ -32,9 +32,9 @@ Linux deserves a biometric authentication layer that is **reliable, secure, and 
 
 ---
 
-## Where We Are: v0.3.3
+## Where We Are: v0.3.5
 
-**Shipped 2026-05-28. Bug-fix release wave (v0.3.2 → v0.3.3) on top of the v0.3.0 foundation.**
+**Shipped 2026-05-28 (v0.3.3) and 2026-07-07 (v0.3.4, v0.3.5), on top of the v0.3.0 foundation.**
 
 v0.3.0 (2026-02-23) shipped all 6 implementation steps end-to-end on Ubuntu 24.04.4 LTS.
 The v0.3.x point releases since then addressed two silent ship-time bugs and added
@@ -48,10 +48,22 @@ broader hardware + packaging coverage:
   Tier-1-verified hardware target after ASUS Zenbook 14 UM3406HA); AUR `!lto !debug`
   fix so `makepkg -si` succeeds on stock Arch; devshell parity with CI;
   7 dependency bumps.
+- **v0.3.4 (2026-07-07)** — fixed capture degradation on shared webcams. `visaged`
+  cached its V4L2 format once at open and never re-asserted it; a co-resident app (e.g. a
+  video call) could leave the device in another format, so `visaged` decoded garbage →
+  "no face detected" until a manual restart. Fix: per-capture format re-assert +
+  in-process camera self-heal (#48). Also: NixOS flake build fix (`openssl` in
+  `buildInputs`), corrected the AUR install hook's invalid `success=end` keyword, and a
+  scheduled `cargo audit` workflow.
+- **v0.3.5 (2026-07-07)** — IR-emitter hardware support for the HP OmniBook X Flip
+  (`30c9:0120`, with a quirk-schema extension for emitters that reject an all-zero "off"
+  write) and the Lenovo ThinkBook 14 MP2PQAZG (`30c9:00c2`); `openssl` + `rustls-webpki`
+  security bumps (Dependabot security updates now enabled). Contribution review reframed
+  problem-first (a PR is a "push request" — ADR 010 §9).
 
 | Component | What it delivers |
 |-----------|-----------------|
-| `visage-hw` | V4L2 capture, GREY/YUYV/Y16 format detection, CLAHE preprocessing, dark frame rejection. Quirks DB covers ASUS Zenbook 14 + Lenovo X1 Carbon Gen 9 |
+| `visage-hw` | V4L2 capture, GREY/YUYV/Y16 format detection, CLAHE preprocessing, dark frame rejection, per-capture format re-assert + camera self-heal. Quirks DB covers ASUS Zenbook 14, Lenovo X1 Carbon Gen 9, Lenovo ThinkBook 14, HP OmniBook X Flip |
 | `visage-core` | SCRFD face detection + ArcFace recognition via ONNX Runtime — CPU-capable, no CUDA required |
 | `visaged` | Persistent daemon — holds camera and model weights across auth requests, D-Bus IPC, SQLite WAL. SIGINT + SIGTERM shutdown handlers; `TimeoutStopSec=10s` defense in depth |
 | `pam-visage` | Thin PAM module — `PAM_IGNORE` fallback, never blocks, system bus. `[success=done default=ignore]` control flow (corrected v0.3.2) |

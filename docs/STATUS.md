@@ -1,7 +1,7 @@
 # Visage v0.3 Release Status
 
-**Last updated:** 2026-05-28
-**Build state:** v0.3.3 shipped. All 6 implementation steps complete + model integrity enforcement + OSS governance + passive liveness detection + post-v0.3.0 bug fix wave (PAM `success=` keyword corrected, `visaged` SIGTERM handler, `visaged.service` `TimeoutStopSec=10s`). End-to-end tested on Ubuntu 24.04.4 LTS. IR emitter quirks DB now covers ASUS Zenbook 14 UM3406HA and Lenovo ThinkPad X1 Carbon Gen 9 20XW00FPUS. Passive liveness still awaits manual spoof testing on hardware.
+**Last updated:** 2026-07-07
+**Build state:** v0.3.5 shipped. All 6 implementation steps complete + model integrity enforcement + OSS governance + passive liveness detection. Since v0.3.3: fixed capture degradation on shared webcams (per-capture V4L2 format re-assert + in-process camera self-heal, #48); the IR emitter quirks DB now covers ASUS Zenbook 14 UM3406HA, Lenovo ThinkPad X1 Carbon Gen 9, Lenovo ThinkBook 14 MP2PQAZG, and HP OmniBook X Flip; NixOS flake build fixed; Dependabot security updates + a scheduled `cargo audit` enabled; contribution review reframed problem-first (ADR 010 §9). End-to-end tested on Ubuntu 24.04.4 LTS. Passive liveness still awaits manual spoof testing on hardware.
 
 ---
 
