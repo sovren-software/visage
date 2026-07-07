@@ -1,0 +1,26 @@
+name: Security Audit
+
+on:
+  schedule:
+    # Weekly (Mondays 06:00 UTC). Advisories appear independently of code changes,
+    # so this runs on a schedule rather than gating every pull request.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Run cargo audit
+        run: cargo audit

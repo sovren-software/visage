@@ -16,7 +16,7 @@ post_install() {
     echo "     Add this line BEFORE 'auth required pam_unix.so' in"
     echo "     /etc/pam.d/system-auth:"
     echo ""
-    echo "       auth  [success=end default=ignore]  pam_visage.so"
+    echo "       auth  [success=done default=ignore]  pam_visage.so"
     echo ""
     echo "     Or for sudo only, add the same line to /etc/pam.d/sudo."
     echo "     On failure or daemon unavailability, password is used as fallback."
