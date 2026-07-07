@@ -131,8 +131,78 @@ impl Camera {
         })
     }
 
+    /// Re-assert visage's negotiated capture format on the (possibly shared) device.
+    ///
+    /// The daemon holds one persistent fd but negotiates the format only once, at
+    /// [`Camera::open`]. On a regular webcam shared with other applications (e.g. a
+    /// video-conferencing app), another process can open the same node, change the
+    /// streaming format via `VIDIOC_S_FMT`, and close it — leaving the device in a
+    /// format that no longer matches our cached `(fourcc, width, height)`. Our next
+    /// capture would then stream at the other app's format and hand back buffers we
+    /// misinterpret through the stale cache, which the detector reads as "no face"
+    /// until a manual restart (issue #48).
+    ///
+    /// Cheap: one `VIDIOC_G_FMT`; `VIDIOC_S_FMT` fires only when the device drifted,
+    /// so this is a no-op in the common, uncontended case. Runs before the
+    /// `MmapStream` is created (before `REQBUFS`/`STREAMON`), where `S_FMT` is legal.
+    fn reassert_format(&self) -> Result<(), CameraError> {
+        let current = self.device.format().map_err(|e| {
+            CameraError::CaptureFailed(format!("failed to query current format: {e}"))
+        })?;
+
+        // Fast path: device is still in our negotiated format.
+        if current.fourcc == self.fourcc
+            && current.width == self.width
+            && current.height == self.height
+        {
+            return Ok(());
+        }
+
+        tracing::warn!(
+            got_fourcc = ?current.fourcc,
+            got_width = current.width,
+            got_height = current.height,
+            want_fourcc = ?self.fourcc,
+            want_width = self.width,
+            want_height = self.height,
+            "device format drifted (another application changed it); re-asserting"
+        );
+
+        let mut fmt = current;
+        fmt.fourcc = self.fourcc;
+        fmt.width = self.width;
+        fmt.height = self.height;
+
+        let negotiated = self.device.set_format(&fmt).map_err(|e| {
+            // Another app is actively streaming (owns the device): surface as busy,
+            // not as a bogus format error.
+            if e.to_string().contains("busy") || e.to_string().contains("EBUSY") {
+                CameraError::DeviceBusy
+            } else {
+                CameraError::FormatNegotiationFailed(format!("failed to re-assert format: {e}"))
+            }
+        })?;
+
+        if negotiated.fourcc != self.fourcc
+            || negotiated.width != self.width
+            || negotiated.height != self.height
+        {
+            return Err(CameraError::FormatNegotiationFailed(format!(
+                "re-assert negotiated {:?} {}x{}, expected {:?} {}x{}",
+                negotiated.fourcc,
+                negotiated.width,
+                negotiated.height,
+                self.fourcc,
+                self.width,
+                self.height
+            )));
+        }
+        Ok(())
+    }
+
     /// Capture a single frame, converting to grayscale if needed.
     pub fn capture_frame(&self) -> Result<Frame, CameraError> {
+        self.reassert_format()?;
         let mut stream =
             MmapStream::with_buffers(&self.device, BufType::VideoCapture, 4).map_err(|e| {
                 CameraError::CaptureFailed(format!("failed to create mmap stream: {e}"))
@@ -197,6 +267,7 @@ impl Camera {
     /// Attempts up to `count * 3` raw captures to find `count` non-dark frames.
     /// Each non-dark frame gets CLAHE contrast enhancement applied.
     pub fn capture_frames(&self, count: usize) -> Result<(Vec<Frame>, usize), CameraError> {
+        self.reassert_format()?;
         let max_attempts = count * 3;
         let mut good_frames = Vec::with_capacity(count);
         let mut dark_count = 0usize;

@@ -12,7 +12,18 @@
   A follow-up can drop the C TLS dependency entirely by building `ort` with
   `default-features = false, features = ["load-dynamic"]` against
   `pkgs.onnxruntime`.
-
+- **Camera capture no longer degrades over long sessions on a shared webcam**
+  (issue #48). `visaged` negotiated the V4L2 capture format only once, at
+  `Camera::open`, and never re-asserted it. On a webcam shared with other
+  applications (e.g. a video-conferencing app), another process could change the
+  device's format via `VIDIOC_S_FMT` and leave it there; `visaged` then captured
+  wrong-format frames it decoded as garbage through its stale format cache —
+  surfacing as "no face detected" until a manual `systemctl restart`. The daemon
+  now re-asserts its format before each capture (a cheap `VIDIOC_G_FMT`; `S_FMT`
+  only fires when the device actually drifted) and, as a safety net, re-opens the
+  camera in-process after repeated capture failures instead of requiring a
+  restart. The per-capture stream is retained, so the camera is still released
+  between verifies and remains usable by other applications.
 ## v0.3.3 — 2026-05-28
 
 ### Added
