@@ -3,6 +3,7 @@
 **Date:** 2026-02-24
 **Status:** Accepted
 **Deciders:** Sovren Software core team
+**Amended:** 2026-07-07 — added §9 (Problem-First PR Triage)
 
 ---
 
@@ -113,7 +114,7 @@ Three issue templates and one PR template standardize contribution quality:
 | Bug report | Structured: environment, repro steps, expected/actual, logs |
 | Hardware report | Mirrors Adopt-a-Laptop format — device info, test results, discovery output |
 | Feature request | Includes scope-check reminder linking the out-of-scope table |
-| PR template | Type checkbox, description, testing evidence, quality gate checklist |
+| PR template | Leads with "What problem does this solve?"; then type, change, testing evidence, DCO + quality-gate checklist |
 
 **Rationale:** The highest-value contributions (hardware quirks) come from users who may
 not be experienced OSS contributors. Templates reduce the back-and-forth from "please add
@@ -139,6 +140,32 @@ and CI-tested before merge.
 **Rationale:** Published timelines set contributor expectations and reduce "is anyone
 looking at this?" pings. Hardware quirks are fast-tracked because each one unlocks support
 for an entire laptop model.
+
+### 9. PR Evaluation: Problem-First Triage
+
+*(Amendment, 2026-07-07.)* A pull request is treated as a **request to push a change** —
+evaluated from the problem down, not the diff up. Every PR (external, dependabot, or
+maintainer) is read through this ladder **before** line-by-line code review:
+
+1. **What problem does it solve?** No stated problem — or a solution hunting for one — is
+   asked "what's the problem here?" before its code is reviewed.
+2. **Is that problem in scope?** Measured against the out-of-scope boundaries in
+   `CONTRIBUTING.md`. Out-of-scope PRs are declined with the boundary, not the code.
+3. **Is it the right solution?** A real, in-scope problem can still have the wrong fix —
+   the bar is the simplest approach that fits the architecture and does not widen the
+   auth/attack surface.
+4. **Is it verifiable?** Evidence (tests, a repro, `visage discover` output) plus green CI.
+5. **Governance** — DCO, security-path review, merge strategy, attribution (§§3–5 above).
+
+**Rationale:** The other decisions here govern *how* a PR is handled (branch protection,
+DCO, CI, timelines); they do not say *how it is judged*. Codifying the problem-first ladder
+makes evaluation consistent and delegable — a maintainer, or an automated agent handling
+routine PRs, applies the same lens, rejects/redirects early on the upper rungs (cheaper for
+us, kinder and faster for the contributor), and escalates only genuine judgment calls:
+scope-edge decisions, anything on the security/auth path, governance waivers, and
+breaking/release-version calls. Surfaced to contributors in `CONTRIBUTING.md`
+("How we evaluate a PR") and in the PR template, which now leads with
+"What problem does this solve?".
 
 ---
 
