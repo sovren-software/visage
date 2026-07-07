@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.5"
+version = "0.3.6"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/sovren-software/visage"
@@ -20,8 +20,16 @@ rust-version = "1.75"
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 
-# D-Bus IPC
-zbus = "5"
+# D-Bus IPC.
+# Pin to the tokio executor and disable the default `async-io` feature (zbus's
+# own recommendation for tokio integration). `visaged` awaits tokio primitives
+# (mpsc/oneshot/Mutex) from inside `#[zbus::interface]` handlers; leaving zbus on
+# its default async-io executor makes any reactor-bound tokio call (e.g. a future
+# `tokio::time`) panic with "no reactor running". Keeping this on tokio also
+# prevents a transitive dep from silently reverting the whole process to async-io
+# via Cargo feature unification. `pam-visage` re-adds `blocking-api` for its
+# synchronous proxy (it drives zbus's internal tokio runtime via `block_on`).
+zbus = { version = "5", default-features = false, features = ["tokio"] }
 
 # Logging / tracing
 tracing = "0.1"

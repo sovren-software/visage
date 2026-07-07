@@ -10,5 +10,9 @@ name = "pam_visage"
 crate-type = ["cdylib"]
 
 [dependencies]
-zbus = { workspace = true }
+# `blocking-api` re-enables the synchronous proxy wrappers (`VisageProxyBlocking`,
+# `zbus::blocking::*`) that the workspace-level `default-features = false` drops.
+# The blocking calls run on zbus's lazily-initialised internal tokio runtime, so
+# the PAM module needs no ambient async runtime of its own.
+zbus = { workspace = true, features = ["blocking-api"] }
 libc = { workspace = true }

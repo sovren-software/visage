@@ -2,6 +2,55 @@
 
 ## Unreleased
 
+## v0.3.6 — 2026-07-07
+
+Security hardening batch — defense-in-depth on the D-Bus authorization surface,
+a fail-open → fail-closed correction in passive liveness, and a runtime-safety
+pin on the async executor. No public API or wire-format changes.
+
+### Security
+
+- **In-process root check on the privileged D-Bus methods** (`Enroll`,
+  `RemoveModel`, `ListModels`). These were root-only by the system-bus policy
+  file (`org.freedesktop.Visage1.conf`) alone; a missing, mis-scoped, or
+  overly-permissive policy — or running on the session bus — could let a
+  non-root caller invoke enrollment mutation or the enrollment listing. The
+  daemon now re-verifies the caller is root (UID 0) inside each handler (skipped
+  on the session bus, development mode), mirroring the defense-in-depth `Verify`
+  already applied.
+- **`VISAGE_SESSION_BUS=0` no longer enables session-bus mode.** Session-bus
+  mode *skips* D-Bus caller-UID validation (development only). The flag was read
+  with `env::var(..).is_ok()`, so *any* value — including `VISAGE_SESSION_BUS=0`,
+  the natural way to turn it off — enabled it and silently disabled UID
+  validation (fail-open). It now enables only on a non-empty, non-`"0"` value;
+  unset, empty, and `"0"` all keep the secure system-bus default.
+- **Passive liveness now fails closed on insufficient landmark data.**
+  `check_landmark_stability` reported "live" when fewer than two landmark frames
+  were available (fail-open), so a match backed by only a single detectable
+  landmark frame bypassed the liveness gate entirely. It now returns not-live in
+  that case; the daemon surfaces it as a (rate-limited) non-match and the user
+  retries. `frames_per_verify` defaults to 3, so a live subject in normal
+  lighting is unaffected.
+
+### Changed
+
+- **Pinned `zbus` to the `tokio` executor** (`default-features = false,
+  features = ["tokio"]`; `pam-visage` re-adds `blocking-api`), following zbus's
+  own recommendation for tokio integration. `visaged` awaits tokio primitives
+  inside `#[zbus::interface]` handlers; on zbus's default `async-io` executor any
+  reactor-bound tokio call added later would panic with "no reactor running", and
+  a single transitive dependency could silently revert the whole process to
+  `async-io` via Cargo feature unification. This also removes the `async-io` /
+  `smol` executor stack from the dependency tree.
+
+### Added
+
+- **AES-256-GCM known-answer test + on-disk blob-format guard** (`visaged`).
+  Locks the embedding-encryption primitive against the NIST GCM test vector and
+  the stored blob layout (12-byte nonce ‖ ciphertext ‖ 16-byte GCM tag, with
+  AEAD tamper rejection), so a future `aes-gcm` upgrade cannot silently change
+  the on-disk format and orphan existing enrollments.
+
 ## v0.3.5 — 2026-07-07
 
 ### Added
