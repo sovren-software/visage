@@ -19,7 +19,7 @@ Linux-PAM — no kernel patches, no modified sudo.
 
 ## Status
 
-**v0.3.5 — feature-complete, end-to-end tested on Ubuntu 24.04.4 LTS.**
+**v0.3.6 — feature-complete, end-to-end tested on Ubuntu 24.04.4 LTS.**
 
 All 6 implementation steps complete. Verified: enroll, verify, PAM/sudo integration,
 systemd hardening, D-Bus access control, install/remove/purge lifecycle, suspend/resume.
@@ -27,7 +27,9 @@ Since v0.3.3: fixed capture degradation on shared webcams (per-capture format re
 in-process camera self-heal), added IR-emitter coverage for the HP OmniBook X Flip and
 Lenovo ThinkBook 14, enabled Dependabot security updates + a scheduled `cargo audit`, and
 reframed contribution review around the problem a PR solves (see [CONTRIBUTING](CONTRIBUTING.md)).
-See [CHANGELOG](CHANGELOG.md) for the full history.
+v0.3.6 hardened the D-Bus authorization surface (in-process root checks on the privileged
+methods; the session-bus flag and passive liveness now fail closed) and pinned the async
+executor to tokio. See [CHANGELOG](CHANGELOG.md) for the full history.
 
 | Step | Component | Status |
 |------|-----------|--------|
@@ -90,7 +92,7 @@ the [Operations Guide](docs/operations-guide.md).
 ### Ubuntu / Debian (.deb)
 
 ```bash
-sudo apt install ./visage_0.3.5_amd64.deb
+sudo apt install ./visage_0.3.6_amd64.deb
 sudo visage setup                          # download ONNX models (~182 MB)
 sudo visage enroll --label default         # enroll your face
 sudo echo "face auth works"                # test — face first, password fallback
