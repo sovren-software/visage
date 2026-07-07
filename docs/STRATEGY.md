@@ -1,7 +1,7 @@
 # Visage Strategy
 
 **Status:** Living — reflects committed direction. Updated as versions ship.
-**Last reviewed:** 2026-02-24
+**Last reviewed:** 2026-07-07
 
 ---
 
@@ -32,9 +32,9 @@ Linux deserves a biometric authentication layer that is **reliable, secure, and 
 
 ---
 
-## Where We Are: v0.3.5
+## Where We Are: v0.3.6
 
-**Shipped 2026-05-28 (v0.3.3) and 2026-07-07 (v0.3.4, v0.3.5), on top of the v0.3.0 foundation.**
+**Shipped 2026-05-28 (v0.3.3) and 2026-07-07 (v0.3.4, v0.3.5, v0.3.6), on top of the v0.3.0 foundation.**
 
 v0.3.0 (2026-02-23) shipped all 6 implementation steps end-to-end on Ubuntu 24.04.4 LTS.
 The v0.3.x point releases since then addressed two silent ship-time bugs and added
@@ -60,6 +60,13 @@ broader hardware + packaging coverage:
   write) and the Lenovo ThinkBook 14 MP2PQAZG (`30c9:00c2`); `openssl` + `rustls-webpki`
   security bumps (Dependabot security updates now enabled). Contribution review reframed
   problem-first (a PR is a "push request" — ADR 010 §9).
+- **v0.3.6 (2026-07-07)** — security hardening batch. In-process root checks on the
+  privileged D-Bus methods (`Enroll`/`RemoveModel`/`ListModels`) — defense-in-depth over
+  the system-bus policy file alone; `VISAGE_SESSION_BUS=0` no longer fail-opens session-bus
+  mode (which skips UID validation); passive liveness fails closed on insufficient landmark
+  data; `zbus` pinned to the tokio executor (drops the `async-io`/`smol` stack, closes a
+  latent reactor-panic class); AES-256-GCM known-answer + on-disk blob-format test. No
+  public API or D-Bus wire-format changes.
 
 | Component | What it delivers |
 |-----------|-----------------|
