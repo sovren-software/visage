@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Fixed
+
+- **NixOS / Nix flake build: add `openssl` to `buildInputs`** (issue #38). The
+  Nix derivation failed to build because `ort` (ONNX Runtime) pulls in `ureq` →
+  `native-tls` → `openssl-sys`, whose build script needs the system OpenSSL
+  library at link time. `nativeBuildInputs` already provided `pkg-config`, but
+  `buildInputs` was missing `openssl`, so `openssl-sys` could not locate it.
+  A follow-up can drop the C TLS dependency entirely by building `ort` with
+  `default-features = false, features = ["load-dynamic"]` against
+  `pkgs.onnxruntime`.
+
 ## v0.3.3 — 2026-05-28
 
 ### Added
