@@ -15,12 +15,27 @@ pub enum EngineError {
     Recognizer(#[from] visage_core::recognizer::RecognizerError),
     #[error("no face detected in any captured frame")]
     NoFaceDetected,
+    #[error("no usable frames captured (camera returned only dark or unreadable frames)")]
+    NoUsableFrames,
     #[error("liveness check failed: landmark displacement {displacement:.3} px < threshold {threshold:.3} px")]
     LivenessCheckFailed { displacement: f32, threshold: f32 },
     #[error("verification timed out")]
     VerifyTimeout,
     #[error("engine thread exited")]
     ChannelClosed,
+}
+
+/// Consecutive "camera-broken" captures before the engine re-opens the device.
+const MAX_CONSECUTIVE_CAPTURE_FAILURES: u32 = 3;
+
+/// True only when a result indicates the *camera* is broken — dark/unreadable
+/// frames or a capture error — never an absent/unrecognised user, a verify
+/// timeout, or a liveness rejection. Only these arm the self-heal re-open (#48).
+fn capture_looks_broken<T>(result: &Result<T, EngineError>) -> bool {
+    matches!(
+        result,
+        Err(EngineError::NoUsableFrames) | Err(EngineError::Camera(_))
+    )
 }
 
 /// Result of an enrollment operation.
@@ -162,9 +177,15 @@ pub fn spawn_engine(
     std::thread::Builder::new()
         .name("visage-engine".into())
         .spawn(move || {
+            // `camera` must be reassignable so the engine can re-open the device
+            // in-process (self-heal) rather than requiring a daemon restart (#48).
+            let mut camera = camera;
+            let device_path = camera.device_path.clone();
+            let mut consecutive_failures: u32 = 0;
+
             tracing::info!("engine thread started");
             while let Some(req) = rx.blocking_recv() {
-                match req {
+                let broken = match req {
                     EngineRequest::Enroll {
                         frames_count,
                         reply,
@@ -176,7 +197,9 @@ pub fn spawn_engine(
                             &mut recognizer,
                             frames_count,
                         );
+                        let broken = capture_looks_broken(&result);
                         let _ = reply.send(result);
+                        broken
                     }
                     EngineRequest::Verify {
                         gallery,
@@ -200,8 +223,38 @@ pub fn spawn_engine(
                             liveness_enabled,
                             liveness_min_displacement,
                         );
+                        let broken = capture_looks_broken(&result);
                         let _ = reply.send(result);
+                        broken
                     }
+                };
+
+                // --- Self-heal: re-open the camera after repeated broken captures ---
+                // This replicates what a manual `systemctl restart` does — re-run
+                // `Camera::open` (fresh fd + `S_FMT`) — catching any residual desync
+                // that per-capture format re-assertion alone does not reset.
+                if broken {
+                    consecutive_failures += 1;
+                    if consecutive_failures >= MAX_CONSECUTIVE_CAPTURE_FAILURES {
+                        tracing::warn!(
+                            consecutive_failures,
+                            "repeated camera-broken captures — re-initializing camera (self-heal)"
+                        );
+                        match Camera::open(&device_path) {
+                            Ok(fresh) => {
+                                camera = fresh;
+                                consecutive_failures = 0;
+                                tracing::info!(device = %device_path, "camera re-opened after failures");
+                            }
+                            Err(e) => {
+                                // Keep the old handle and retry on the next failure;
+                                // never let the engine thread die.
+                                tracing::error!(error = %e, "camera re-open failed; will retry");
+                            }
+                        }
+                    }
+                } else {
+                    consecutive_failures = 0;
                 }
             }
             tracing::info!("engine thread exiting");
@@ -255,7 +308,7 @@ fn run_enroll(
     );
 
     if frames.is_empty() {
-        return Err(EngineError::NoFaceDetected);
+        return Err(EngineError::NoUsableFrames);
     }
 
     let mut embeddings: Vec<(Embedding, f32)> = Vec::new();
@@ -371,7 +424,7 @@ fn run_verify(
     );
 
     if frames.is_empty() {
-        return Err(EngineError::NoFaceDetected);
+        return Err(EngineError::NoUsableFrames);
     }
 
     let matcher = CosineMatcher;
@@ -449,4 +502,29 @@ fn run_verify(
         result,
         best_quality,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The self-heal re-open must arm ONLY on camera-broken outcomes — never on a
+    /// genuine no-face / unknown-user, a verify timeout, a liveness rejection, or a
+    /// success. Guards the false-positive property in CI (no hardware needed).
+    #[test]
+    fn self_heal_only_arms_on_camera_broken() {
+        // Camera-broken → arm.
+        assert!(capture_looks_broken::<()>(&Err(EngineError::NoUsableFrames)));
+        assert!(capture_looks_broken::<()>(&Err(EngineError::Camera(
+            visage_hw::CameraError::DeviceBusy
+        ))));
+        // Everything else → do NOT re-open.
+        assert!(!capture_looks_broken::<()>(&Err(EngineError::NoFaceDetected)));
+        assert!(!capture_looks_broken::<()>(&Err(EngineError::VerifyTimeout)));
+        assert!(!capture_looks_broken::<()>(&Err(EngineError::LivenessCheckFailed {
+            displacement: 0.0,
+            threshold: 1.0,
+        })));
+        assert!(!capture_looks_broken::<()>(&Ok(())));
+    }
 }
