@@ -514,17 +514,25 @@ mod tests {
     #[test]
     fn self_heal_only_arms_on_camera_broken() {
         // Camera-broken → arm.
-        assert!(capture_looks_broken::<()>(&Err(EngineError::NoUsableFrames)));
+        assert!(capture_looks_broken::<()>(&Err(
+            EngineError::NoUsableFrames
+        )));
         assert!(capture_looks_broken::<()>(&Err(EngineError::Camera(
             visage_hw::CameraError::DeviceBusy
         ))));
         // Everything else → do NOT re-open.
-        assert!(!capture_looks_broken::<()>(&Err(EngineError::NoFaceDetected)));
-        assert!(!capture_looks_broken::<()>(&Err(EngineError::VerifyTimeout)));
-        assert!(!capture_looks_broken::<()>(&Err(EngineError::LivenessCheckFailed {
-            displacement: 0.0,
-            threshold: 1.0,
-        })));
+        assert!(!capture_looks_broken::<()>(&Err(
+            EngineError::NoFaceDetected
+        )));
+        assert!(!capture_looks_broken::<()>(&Err(
+            EngineError::VerifyTimeout
+        )));
+        assert!(!capture_looks_broken::<()>(&Err(
+            EngineError::LivenessCheckFailed {
+                displacement: 0.0,
+                threshold: 1.0,
+            }
+        )));
         assert!(!capture_looks_broken::<()>(&Ok(())));
     }
 }
