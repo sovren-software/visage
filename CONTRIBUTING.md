@@ -174,6 +174,20 @@ ideas are bad. If you want gestures or voice on Linux, watch the [Esver OS](http
 
 ---
 
+## How we evaluate a PR
+
+A pull request is a request to push a change — we read it from the problem down, not the diff up. In order:
+
+1. **What problem does it solve?** No stated problem, or a solution hunting for one, gets "what's the problem here?" before any code review.
+2. **Is the problem in scope?** See [what we will NOT merge](#what-we-will-not-merge). Out of scope → we decline with the boundary, not the code.
+3. **Is it the right solution?** A real, in-scope problem can still have the wrong fix — we look for the simplest approach that fits the architecture.
+4. **Is it verifiable?** Evidence it works (tests, `visage discover` output, a repro) and green CI.
+5. **Governance** — DCO sign-off, extra review for the auth path, attribution.
+
+Line-by-line review comes after 1–3. So the fastest path to merge is a clear problem statement — and a well-scoped PR gets a fast yes or a fast, kind no, never silence.
+
+---
+
 ## PR guidelines
 
 All PRs are filed against `main`. Use the [PR template](.github/pull_request_template.md)
