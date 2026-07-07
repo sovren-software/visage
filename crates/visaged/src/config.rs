@@ -67,7 +67,7 @@ impl Config {
                 .map(|v| v != "0")
                 .unwrap_or(true),
             liveness_min_displacement: env_f32("VISAGE_LIVENESS_MIN_DISPLACEMENT", 0.8),
-            session_bus: std::env::var("VISAGE_SESSION_BUS").is_ok(),
+            session_bus: parse_session_bus(std::env::var("VISAGE_SESSION_BUS").ok().as_deref()),
         }
     }
 
@@ -107,4 +107,51 @@ fn env_usize(key: &str, default: usize) -> usize {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(default)
+}
+
+/// Parse the `VISAGE_SESSION_BUS` value into the session-bus flag.
+///
+/// Security-sensitive: session-bus mode *skips* D-Bus caller-UID validation
+/// (see `dbus_interface::verify` and `require_root_caller`), so it must default
+/// to `false` (system bus, validation ON) and enable only on an explicit opt-in.
+/// An unset value, an empty value, and the literal `"0"` all keep it OFF — only a
+/// non-empty, non-`"0"` value (e.g. `"1"`) turns it on.
+///
+/// Previously this used `env::var(..).is_ok()`, so *any* presence of the
+/// variable — including `VISAGE_SESSION_BUS=0`, the natural way to try to turn it
+/// off — enabled session-bus mode and silently disabled UID validation: a
+/// fail-open trap. This helper closes it.
+fn parse_session_bus(value: Option<&str>) -> bool {
+    matches!(value, Some(v) if !v.is_empty() && v != "0")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_session_bus;
+
+    #[test]
+    fn session_bus_defaults_off_and_respects_zero() {
+        // Secure default: absent, empty, or "0" → system bus (UID validation ON).
+        assert!(
+            !parse_session_bus(None),
+            "unset must not enable session bus"
+        );
+        assert!(
+            !parse_session_bus(Some("")),
+            "empty must not enable session bus"
+        );
+        assert!(
+            !parse_session_bus(Some("0")),
+            "VISAGE_SESSION_BUS=0 must NOT enable session bus (was a fail-open trap)"
+        );
+        // Explicit opt-in: any non-empty, non-"0" value enables dev mode.
+        assert!(
+            parse_session_bus(Some("1")),
+            "\"1\" must enable session bus"
+        );
+        assert!(
+            parse_session_bus(Some("true")),
+            "any other non-empty value enables session bus"
+        );
+    }
 }

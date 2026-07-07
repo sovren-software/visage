@@ -47,18 +47,25 @@ const DEFAULT_MIN_EYE_DISPLACEMENT: f32 = 0.8;
 /// # Returns
 ///
 /// A [`LivenessResult`] indicating whether the landmark sequence passes the
-/// liveness check. Returns `is_live = true` (pass) if fewer than 2 frames
-/// are provided, since the check requires at least one frame pair.
+/// liveness check. **Fails closed:** if fewer than 2 landmark frames are
+/// provided there is no frame pair to compare, so the check cannot gather any
+/// eye-movement evidence and returns `is_live = false`. A liveness gate must
+/// never vouch for a subject it could not actually assess — reporting "live" on
+/// missing evidence would let a spoof that yields only a single detectable
+/// landmark frame bypass the check entirely. The engine invokes this only when
+/// liveness is enabled *and* a match otherwise succeeded, where a fail-closed
+/// result is surfaced as a (rate-limited) non-match and the user simply retries.
 pub fn check_landmark_stability(
     landmark_sequence: &[[(f32, f32); 5]],
     min_displacement: Option<f32>,
 ) -> LivenessResult {
     let threshold = min_displacement.unwrap_or(DEFAULT_MIN_EYE_DISPLACEMENT);
 
-    // Need at least 2 frames to compare
+    // Fewer than 2 frames → no frame pair → no eye-movement evidence.
+    // Fail closed: a liveness check that cannot gather evidence must NOT report live.
     if landmark_sequence.len() < 2 {
         return LivenessResult {
-            is_live: true, // cannot determine — pass through
+            is_live: false,
             mean_eye_displacement: 0.0,
             frame_pairs_analysed: 0,
         };
@@ -115,18 +122,20 @@ mod tests {
     }
 
     #[test]
-    fn test_single_frame_passes() {
-        // Cannot determine liveness with 1 frame — should pass through
+    fn test_single_frame_fails_closed() {
+        // Cannot determine liveness with 1 frame (no pair to compare) — must
+        // fail closed (reject) rather than vouch for an unassessed subject.
         let seq = vec![landmarks_with_eyes((100.0, 50.0), (140.0, 50.0))];
         let result = check_landmark_stability(&seq, None);
-        assert!(result.is_live);
+        assert!(!result.is_live);
         assert_eq!(result.frame_pairs_analysed, 0);
     }
 
     #[test]
-    fn test_empty_sequence_passes() {
+    fn test_empty_sequence_fails_closed() {
+        // No landmark data at all — must fail closed.
         let result = check_landmark_stability(&[], None);
-        assert!(result.is_live);
+        assert!(!result.is_live);
         assert_eq!(result.frame_pairs_analysed, 0);
     }
 

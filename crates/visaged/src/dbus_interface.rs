@@ -46,19 +46,68 @@ fn uid_for_name(name: &str) -> Option<u32> {
     }
 }
 
+/// Defense-in-depth: require the D-Bus caller to be root (UID 0) for a
+/// privileged method (`Enroll`, `RemoveModel`, `ListModels`).
+///
+/// The system-bus policy (`org.freedesktop.Visage1.conf`) already restricts
+/// these methods to root by omission from the `default` context. This re-checks
+/// the caller's UID in-process so a missing, mis-scoped, or overly-permissive
+/// policy file cannot silently widen access to enrollment mutation or the
+/// enrollment listing. On the session bus (development mode) the check is
+/// skipped — mirroring `verify`'s UID validation, since all session-bus callers
+/// share one user and no system policy applies.
+async fn require_root_caller(
+    method: &str,
+    session_bus: bool,
+    header: &zbus::message::Header<'_>,
+    conn: &zbus::Connection,
+) -> zbus::fdo::Result<()> {
+    if session_bus {
+        return Ok(());
+    }
+    let sender = header
+        .sender()
+        .ok_or_else(|| zbus::fdo::Error::Failed("no sender in message".to_string()))?;
+    let caller_uid = get_caller_uid(sender.as_str(), conn).await?;
+    if caller_uid != 0 {
+        tracing::warn!(
+            method,
+            caller_uid,
+            "privileged method denied: caller is not root"
+        );
+        return Err(zbus::fdo::Error::AccessDenied(format!(
+            "method '{method}' requires root"
+        )));
+    }
+    Ok(())
+}
+
 #[interface(name = "org.freedesktop.Visage1")]
 impl VisageService {
     /// Enroll a new face model for the given user.
     ///
     /// Returns the UUID of the newly created model.
-    async fn enroll(&self, user: &str, label: &str) -> zbus::fdo::Result<String> {
+    async fn enroll(
+        &self,
+        user: &str,
+        label: &str,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+    ) -> zbus::fdo::Result<String> {
         tracing::info!(user, label, "enroll requested");
 
         // Copy values while holding lock, then release
-        let (engine, frames_count) = {
+        let (engine, frames_count, session_bus) = {
             let state = self.state.lock().await;
-            (state.engine.clone(), state.config.frames_per_enroll)
+            (
+                state.engine.clone(),
+                state.config.frames_per_enroll,
+                state.config.session_bus,
+            )
         };
+
+        // Defense-in-depth (enrollment is a privileged mutation).
+        require_root_caller("Enroll", session_bus, &header, conn).await?;
 
         // Run engine (no lock held)
         let result = engine.enroll(frames_count).await.map_err(|e| {
@@ -262,8 +311,16 @@ impl VisageService {
     }
 
     /// List enrolled face models for the given user as JSON.
-    async fn list_models(&self, user: &str) -> zbus::fdo::Result<String> {
+    async fn list_models(
+        &self,
+        user: &str,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+    ) -> zbus::fdo::Result<String> {
         tracing::info!(user, "list_models requested");
+        // Defense-in-depth: enrollment listing is a root-only operation.
+        let session_bus = self.state.lock().await.config.session_bus;
+        require_root_caller("ListModels", session_bus, &header, conn).await?;
         let state = self.state.lock().await;
         let models = state
             .store
@@ -274,8 +331,17 @@ impl VisageService {
     }
 
     /// Remove an enrolled face model by ID (scoped to user).
-    async fn remove_model(&self, user: &str, model_id: &str) -> zbus::fdo::Result<bool> {
+    async fn remove_model(
+        &self,
+        user: &str,
+        model_id: &str,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+    ) -> zbus::fdo::Result<bool> {
         tracing::info!(user, model_id, "remove_model requested");
+        // Defense-in-depth (removal is a privileged mutation).
+        let session_bus = self.state.lock().await.config.session_bus;
+        require_root_caller("RemoveModel", session_bus, &header, conn).await?;
         let state = self.state.lock().await;
         let removed = state
             .store

@@ -527,6 +527,76 @@ mod tests {
         assert!(store2.decrypt_embedding(&blob).is_err());
     }
 
+    /// Known-answer test locking the AES-256-GCM primitive against NIST GCM
+    /// test case 14 (256-bit all-zero key, 96-bit all-zero IV, 16-byte all-zero
+    /// plaintext). `aes-gcm`'s `encrypt` returns the ciphertext concatenated with
+    /// the 16-byte GCM tag.
+    ///
+    /// This is the golden guard for a future `aes-gcm` version bump (e.g. the
+    /// deferred 0.10 → 0.11 migration): any change that altered the primitive's
+    /// output would make every embedding already on disk undecryptable, and it
+    /// fails here first. AES-256-GCM is a fixed standard, so a correct 0.11
+    /// implementation must reproduce these exact bytes.
+    #[test]
+    fn test_aes256gcm_known_answer_vector() {
+        let key = Key::<Aes256Gcm>::from_slice(&[0u8; 32]);
+        let cipher = Aes256Gcm::new(key);
+        let nonce = Nonce::from_slice(&[0u8; 12]);
+        let out = cipher.encrypt(nonce, [0u8; 16].as_slice()).unwrap();
+
+        let expected_ciphertext = [
+            0xce, 0xa7, 0x40, 0x3d, 0x4d, 0x60, 0x6b, 0x6e, 0x07, 0x4e, 0xc5, 0xd3, 0xba, 0xf3,
+            0x9d, 0x18,
+        ];
+        let expected_tag = [
+            0xd0, 0xd1, 0xc8, 0xa7, 0x99, 0x99, 0x6b, 0xf0, 0x26, 0x5b, 0x98, 0xb5, 0xd4, 0x8a,
+            0xb9, 0x19,
+        ];
+        assert_eq!(out.len(), 32, "ciphertext+tag length changed");
+        assert_eq!(
+            &out[..16],
+            &expected_ciphertext,
+            "AES-256-GCM ciphertext drifted from NIST vector"
+        );
+        assert_eq!(
+            &out[16..],
+            &expected_tag,
+            "AES-256-GCM tag drifted from NIST vector"
+        );
+    }
+
+    /// Locks the on-disk embedding blob format — a 12-byte nonce prefix followed
+    /// by AES-256-GCM ciphertext + 16-byte tag — and confirms AEAD authentication
+    /// (any tag tamper is rejected, i.e. decryption fails closed). Together with
+    /// the KAT above this guards the storage contract across `aes-gcm` upgrades.
+    #[tokio::test]
+    async fn test_encrypted_blob_format_and_authentication() {
+        let store = FaceModelStore {
+            conn: tokio_rusqlite::Connection::open(Path::new(":memory:"))
+                .await
+                .unwrap(),
+            enc_key: [7u8; 32],
+        };
+        let values: Vec<f32> = (0..EMBEDDING_DIM).map(|i| i as f32 / 512.0).collect();
+
+        let blob = store.encrypt_embedding(&values).unwrap();
+        // 12-byte nonce + 2048-byte plaintext + 16-byte GCM tag.
+        assert_eq!(blob.len(), 12 + EMBEDDING_BYTE_LEN + 16);
+
+        // Round-trips bit-exactly through the current format.
+        let out = store.decrypt_embedding(&blob).unwrap();
+        assert_eq!(out.len(), EMBEDDING_DIM);
+        for (a, b) in values.iter().zip(out.iter()) {
+            assert_eq!(a.to_bits(), b.to_bits());
+        }
+
+        // Flipping the final tag byte must fail authentication (fail closed).
+        let mut tampered = blob.clone();
+        let last = tampered.len() - 1;
+        tampered[last] ^= 0x01;
+        assert!(store.decrypt_embedding(&tampered).is_err());
+    }
+
     #[tokio::test]
     async fn test_list_by_user() {
         let store = FaceModelStore::open(Path::new(":memory:")).await.unwrap();

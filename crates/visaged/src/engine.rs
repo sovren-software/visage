@@ -472,7 +472,10 @@ fn run_verify(
 
     // --- Passive liveness check ---
     // Run after detection loop so we always have full landmark data.
-    // Only gates the result when a match would otherwise succeed.
+    // Only gates the result when a match would otherwise succeed. The check
+    // fails closed: fewer than 2 landmark frames yields `is_live = false`
+    // (rejected), so a spoof that produces only a single detectable landmark
+    // frame cannot slip past liveness by starving it of evidence.
     if liveness_enabled && result.matched {
         let liveness =
             check_landmark_stability(&landmark_sequence, Some(liveness_min_displacement));
