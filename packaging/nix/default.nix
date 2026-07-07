@@ -14,6 +14,7 @@
 , pkg-config
 , pam
 , dbus
+, openssl
 , substituteAll ? null
 }:
 
@@ -26,7 +27,9 @@ rustPlatform.buildRustPackage {
   cargoLock.lockFile = ../../Cargo.lock;
 
   nativeBuildInputs = [ pkg-config ];
-  buildInputs = [ pam dbus ];
+  # openssl: `ort` (ONNX Runtime) pulls `ureq` → `native-tls` → `openssl-sys`,
+  # whose build script needs the system OpenSSL at link time (issue #38).
+  buildInputs = [ pam dbus openssl ];
 
   # cargo test runs unit tests; integration tests require a camera + daemon
   doCheck = true;

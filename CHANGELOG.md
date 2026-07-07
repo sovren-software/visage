@@ -4,6 +4,14 @@
 
 ### Fixed
 
+- **NixOS / Nix flake build: add `openssl` to `buildInputs`** (issue #38). The
+  Nix derivation failed to build because `ort` (ONNX Runtime) pulls in `ureq` →
+  `native-tls` → `openssl-sys`, whose build script needs the system OpenSSL
+  library at link time. `nativeBuildInputs` already provided `pkg-config`, but
+  `buildInputs` was missing `openssl`, so `openssl-sys` could not locate it.
+  A follow-up can drop the C TLS dependency entirely by building `ort` with
+  `default-features = false, features = ["load-dynamic"]` against
+  `pkgs.onnxruntime`.
 - **Camera capture no longer degrades over long sessions on a shared webcam**
   (issue #48). `visaged` negotiated the V4L2 capture format only once, at
   `Camera::open`, and never re-asserted it. On a webcam shared with other
@@ -16,7 +24,6 @@
   camera in-process after repeated capture failures instead of requiring a
   restart. The per-capture stream is retained, so the camera is still released
   between verifies and remains usable by other applications.
-
 ## v0.3.3 — 2026-05-28
 
 ### Added
