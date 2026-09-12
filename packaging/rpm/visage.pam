@@ -1,0 +1,4 @@
+#%PAM-1.0
+# Fedora has no pam-auth-update and authselect owns system-auth. Add this line
+# as the second line of each service that should accept a face (sudo, polkit-1, gdm-password).
+auth        [success=done default=ignore]    pam_visage.so

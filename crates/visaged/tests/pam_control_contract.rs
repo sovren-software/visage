@@ -24,6 +24,7 @@ const DECLARING_FILES: &[&str] = &[
     "packaging/debian/pam-auth-update",
     "packaging/aur/visage.install",
     "packaging/nix/module.nix",
+    "packaging/rpm/visage.pam",
 ];
 
 /// Valid PAM actions, per `pam.conf(5)`. Anything else — including `end` — is

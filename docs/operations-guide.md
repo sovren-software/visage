@@ -129,6 +129,27 @@ from `/etc/pam.d/system-auth` manually.
 
 ---
 
+### Fedora (RPM, build from source)
+
+```bash
+sudo dnf install pam-devel dbus-devel clang-devel
+cargo install cargo-generate-rpm
+cargo build --release --workspace
+cargo generate-rpm -p crates/visaged
+sudo dnf install ./target/generate-rpm/visage-*.rpm
+sudo systemctl enable --now visaged visage-resume
+```
+
+PAM is manual on Fedora: authselect owns `system-auth` and `password-auth` and overwrites
+edits there. Add the line from `/usr/share/visage/pam.d/visage` as the second line of each
+service you want (`sudo`, `polkit-1`, `gdm-password`):
+
+```text
+auth        [success=done default=ignore]    pam_visage.so
+```
+
+---
+
 ## First-Time Setup
 
 ### 1. Download models (one-time):
