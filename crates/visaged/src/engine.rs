@@ -164,12 +164,15 @@ pub fn spawn_engine(
         None
     };
 
-    // Discard warmup frames for camera AGC/AE stabilization
+    // Discard warmup frames for camera AGC/AE stabilization — with the emitter
+    // active, in one continuous stream. Auto-gain only adapts while streaming;
+    // warming up against ambient light leaves it high, and the first lit
+    // capture after start is then saturated white and fails detection.
     if warmup_frames > 0 {
         tracing::info!(count = warmup_frames, "discarding warmup frames");
-        for _ in 0..warmup_frames {
-            let _ = camera.capture_frame();
-        }
+        activate_emitter(&emitter);
+        let _ = camera.capture_frames(warmup_frames);
+        deactivate_emitter(&emitter);
     }
 
     let (tx, mut rx) = mpsc::channel::<EngineRequest>(4);
