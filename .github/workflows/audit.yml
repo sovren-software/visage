@@ -16,8 +16,36 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Same single source of truth as ci.yml. This workflow floated on
+      # `@stable` until 2026-09-15, which is the pin whose six-day outage
+      # rust-toolchain.toml documents — ci.yml was fixed in August and this
+      # one was missed.
+      #
+      # The trade-off runs the other way here: `cargo install cargo-audit`
+      # needs a toolchain new enough to BUILD cargo-audit, so a pin that
+      # falls behind its MSRV breaks this job. Headroom at the time of
+      # pinning was 1.95.0 against cargo-audit 0.22.2's required 1.88. If
+      # this job starts failing on an MSRV error, bump rust-toolchain.toml —
+      # that failure is loud and names its own fix, which is the direction
+      # rust-toolchain.toml argues for.
+      - name: Read the pinned toolchain
+        id: rust
+        run: |
+          set -euo pipefail
+          channel="$(grep '^channel' rust-toolchain.toml | sed 's/.*"\(.*\)"/\1/')"
+          # Refuse rather than hand the action an empty string, which it would
+          # silently resolve to something else.
+          if [ -z "$channel" ]; then
+            echo "::error::no channel found in rust-toolchain.toml"
+            exit 1
+          fi
+          echo "using pinned toolchain: ${channel}"
+          echo "channel=${channel}" >> "$GITHUB_OUTPUT"
+
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.rust.outputs.channel }}
 
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
