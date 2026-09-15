@@ -107,6 +107,7 @@ VID:PID to the correct control bytes for each known device.
 | Lenovo ThinkPad X1 Carbon Gen 9 20XW00FPUS | `174f:2454` | ✅ Verified on hardware |
 | Lenovo ThinkBook 14 MP2PQAZG | `30c9:00c2` | ✅ Verified on hardware |
 | HP OmniBook X Flip | `30c9:0120` | ✅ Verified on hardware |
+| Lenovo ThinkPad P14s Gen 4 21HF | `174f:11a8` | ✅ Verified on hardware |
 
 **Known devices with NO quirk entry:**
 

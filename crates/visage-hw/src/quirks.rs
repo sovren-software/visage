@@ -17,6 +17,8 @@ const QUIRK_174F_2454: &str = include_str!("../../../contrib/hw/174f-2454.toml")
 const QUIRK_30C9_00C2: &str = include_str!("../../../contrib/hw/30c9-00c2.toml");
 /// Compile-time embedded quirk for the HP OmniBook X Flip IR camera (Luxvisions 30c9:0120).
 const QUIRK_30C9_0120: &str = include_str!("../../../contrib/hw/30c9-0120.toml");
+/// Compile-time embedded quirk for the Lenovo ThinkPad P14s Gen 4 IR camera (Syntek 174f:11a8).
+const QUIRK_174F_11A8: &str = include_str!("../../../contrib/hw/174f-11a8.toml");
 
 static QUIRK_DB: OnceLock<Vec<QuirkFile>> = OnceLock::new();
 
@@ -68,6 +70,7 @@ const QUIRK_SOURCES: &[(&str, &str)] = &[
     ("174f-2454.toml", QUIRK_174F_2454),
     ("30c9-00c2.toml", QUIRK_30C9_00C2),
     ("30c9-0120.toml", QUIRK_30C9_0120),
+    ("174f-11a8.toml", QUIRK_174F_11A8),
 ];
 
 fn quirk_db() -> &'static Vec<QuirkFile> {
