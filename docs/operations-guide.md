@@ -322,6 +322,7 @@ Environment=VARIABLE=value
 | `VISAGE_VERIFY_TIMEOUT_SECS` | `10` | Max seconds for a verify attempt |
 | `VISAGE_FRAMES_PER_VERIFY` | `3` | Frames captured per authentication |
 | `VISAGE_FRAMES_PER_ENROLL` | `5` | Frames captured per enrollment |
+| `VISAGE_WARMUP_FRAMES` | `4` | Usable frames discarded at daemon start, captured with the IR emitter active so auto-gain settles against it. Raise it if the first verify after start fails and later ones work. |
 | `VISAGE_EMITTER_ENABLED` | `1` | Set to `0` to disable IR emitter |
 | `VISAGE_LIVENESS_ENABLED` | `1` | Set to `0` to disable passive liveness detection (development only) |
 | `VISAGE_LIVENESS_MIN_DISPLACEMENT` | `0.8` | Minimum eye landmark displacement (px) for liveness check |
