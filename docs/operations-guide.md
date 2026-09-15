@@ -365,6 +365,16 @@ the threshold to 0.35.
 
 ---
 
+## GNOME: keyring and the login screen
+
+A face cannot unlock the GNOME keyring, and GNOME uses the same PAM service, `gdm-password`,
+for login and lock screen. With `pam_visage` there, the first login after boot succeeds by face
+and the keyring asks for the password anyway. `contrib/pam/visage-has-session` is a `pam_exec`
+gate that skips face when the user has no session yet (first login) and allows it at unlock;
+see [`contrib/pam/README.md`](../contrib/pam/README.md).
+
+---
+
 ## Suspend and Resume
 
 Visage automatically handles suspend/resume via `visage-resume.service`. When the system
