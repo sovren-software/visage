@@ -46,3 +46,22 @@ assets = [
     ["../../packaging/debian/pam-auth-update", "usr/share/pam-configs/visage", "644"],
     ["../../README.md", "usr/share/doc/visage/README.md", "644"],
 ]
+
+# Fedora/RHEL RPM: `cargo generate-rpm -p crates/visaged` (paths are workspace-relative).
+[package.metadata.generate-rpm]
+name = "visage"
+auto-req = "no"
+requires = { pam = "*", dbus = "*", systemd = "*" }
+post_install_script = "systemctl daemon-reload >/dev/null 2>&1 || :"
+post_uninstall_script = "systemctl daemon-reload >/dev/null 2>&1 || :"
+assets = [
+  { source = "target/release/visaged", dest = "/usr/bin/visaged", mode = "755" },
+  { source = "target/release/visage",  dest = "/usr/bin/visage",  mode = "755" },
+  { source = "target/release/libpam_visage.so", dest = "/usr/lib64/security/pam_visage.so", mode = "644" },
+  { source = "packaging/dbus/org.freedesktop.Visage1.conf", dest = "/usr/share/dbus-1/system.d/org.freedesktop.Visage1.conf", mode = "644", config = true },
+  { source = "packaging/systemd/visaged.service",       dest = "/usr/lib/systemd/system/visaged.service",       mode = "644" },
+  { source = "packaging/systemd/visage-resume.service", dest = "/usr/lib/systemd/system/visage-resume.service", mode = "644" },
+  { source = "packaging/rpm/visage.pam", dest = "/usr/share/visage/pam.d/visage", mode = "644", doc = true },
+  { source = "README.md", dest = "/usr/share/doc/visage/README.md", mode = "644", doc = true },
+  { source = "LICENSE",   dest = "/usr/share/licenses/visage/LICENSE", mode = "644", doc = true },
+]
