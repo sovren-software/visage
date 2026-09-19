@@ -82,7 +82,20 @@ impl FaceModelStore {
                      pose_label TEXT NOT NULL DEFAULT 'frontal',
                      created_at TEXT NOT NULL
                  );
-                 CREATE INDEX IF NOT EXISTS idx_faces_user ON faces(user);",
+                 CREATE INDEX IF NOT EXISTS idx_faces_user ON faces(user);
+                 CREATE TABLE IF NOT EXISTS auth_attempts (
+                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     user TEXT NOT NULL,
+                     created_at TEXT NOT NULL,
+                     matched INTEGER NOT NULL,
+                     similarity REAL NOT NULL DEFAULT 0.0,
+                     model_id TEXT,
+                     model_label TEXT,
+                     reason TEXT NOT NULL DEFAULT 'verify',
+                     caller_uid INTEGER
+                 );
+                 CREATE INDEX IF NOT EXISTS idx_attempts_user ON auth_attempts(user);
+                 CREATE INDEX IF NOT EXISTS idx_attempts_time ON auth_attempts(created_at);",
             )?;
             Ok(())
         })
@@ -218,6 +231,93 @@ impl FaceModelStore {
                 let count: u64 =
                     conn.query_row("SELECT COUNT(*) FROM faces", [], |row| row.get(0))?;
                 Ok(count)
+            })
+            .await
+            .map_err(StoreError::from)
+    }
+
+    /// Record one authentication attempt (match or not). Never fails auth:
+    /// callers must ignore the Result — history must not break logins.
+    pub async fn record_attempt(&self, attempt: &AuthAttempt) -> Result<(), StoreError> {
+        let attempt = attempt.clone();
+        self.conn
+            .call(move |conn| {
+                conn.execute(
+                    "INSERT INTO auth_attempts
+                     (user, created_at, matched, similarity, model_id, model_label, reason, caller_uid)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    rusqlite::params![
+                        attempt.user,
+                        attempt.created_at,
+                        attempt.matched as i64,
+                        attempt.similarity as f64,
+                        attempt.model_id,
+                        attempt.model_label,
+                        attempt.reason,
+                        attempt.caller_uid,
+                    ],
+                )?;
+                Ok(())
+            })
+            .await
+            .map_err(StoreError::from)
+    }
+
+    /// Recent attempts, newest first. `limit` caps rows (default 50, max 500).
+    pub async fn recent_attempts(
+        &self,
+        user: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<AuthAttempt>, StoreError> {
+        let limit = limit.clamp(1, 500) as i64;
+        let user = user.map(|u| u.to_string());
+        self.conn
+            .call(move |conn| {
+                let mut rows = Vec::new();
+                if let Some(user) = user {
+                    let mut stmt = conn.prepare(
+                        "SELECT user, created_at, matched, similarity,
+                                model_id, model_label, reason, caller_uid
+                         FROM auth_attempts WHERE user = ?1
+                         ORDER BY id DESC LIMIT ?2",
+                    )?;
+                    for row in stmt.query_map((user, limit), |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, i64>(2)?,
+                            row.get::<_, f64>(3)?,
+                            row.get::<_, Option<String>>(4)?,
+                            row.get::<_, Option<String>>(5)?,
+                            row.get::<_, String>(6)?,
+                            row.get::<_, Option<i64>>(7)?,
+                        ))
+                    })? {
+                        rows.push(auth_attempt_from_row(row?));
+                    }
+                } else {
+                    let mut stmt = conn.prepare(
+                        "SELECT user, created_at, matched, similarity,
+                                model_id, model_label, reason, caller_uid
+                         FROM auth_attempts
+                         ORDER BY id DESC LIMIT ?1",
+                    )?;
+                    for row in stmt.query_map([limit], |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, i64>(2)?,
+                            row.get::<_, f64>(3)?,
+                            row.get::<_, Option<String>>(4)?,
+                            row.get::<_, Option<String>>(5)?,
+                            row.get::<_, String>(6)?,
+                            row.get::<_, Option<i64>>(7)?,
+                        ))
+                    })? {
+                        rows.push(auth_attempt_from_row(row?));
+                    }
+                }
+                Ok(rows)
             })
             .await
             .map_err(StoreError::from)
@@ -373,6 +473,72 @@ fn validate_embedding_values(values: &[f32]) -> Result<(), StoreError> {
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
+/// One authentication attempt, for the local login history.
+///
+/// Text-only: who, when, match or not, similarity score, which model matched.
+/// No images, no embeddings — the camera frames are discarded after inference.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AuthAttempt {
+    pub user: String,
+    pub created_at: String,
+    pub matched: bool,
+    pub similarity: f32,
+    pub model_id: Option<String>,
+    pub model_label: Option<String>,
+    /// Why this row exists: "verify", "liveness-reject", "no-face",
+    /// "rate-limited", "denied", "error".
+    pub reason: String,
+    pub caller_uid: Option<i64>,
+}
+
+impl AuthAttempt {
+    pub fn now(
+        user: &str,
+        matched: bool,
+        similarity: f32,
+        model_id: Option<String>,
+        model_label: Option<String>,
+        reason: &str,
+        caller_uid: Option<i64>,
+    ) -> Self {
+        Self {
+            user: user.to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            matched,
+            similarity,
+            model_id,
+            model_label,
+            reason: reason.to_string(),
+            caller_uid,
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn auth_attempt_from_row(
+    row: (
+        String,
+        String,
+        i64,
+        f64,
+        Option<String>,
+        Option<String>,
+        String,
+        Option<i64>,
+    ),
+) -> AuthAttempt {
+    AuthAttempt {
+        user: row.0,
+        created_at: row.1,
+        matched: row.2 != 0,
+        similarity: row.3 as f32,
+        model_id: row.4,
+        model_label: row.5,
+        reason: row.6,
+        caller_uid: row.7,
+    }
+}
+
 /// Metadata about an enrolled face model (no embedding data).
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ModelInfo {
@@ -440,6 +606,63 @@ mod tests {
 
         let gallery = store.get_gallery_for_user("alice").await.unwrap();
         assert!(gallery.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_auth_history_roundtrip_and_filter() {
+        let store = FaceModelStore::open(Path::new(":memory:")).await.unwrap();
+
+        store
+            .record_attempt(&AuthAttempt::now(
+                "alice",
+                true,
+                0.87,
+                Some("model-1".to_string()),
+                Some("normal".to_string()),
+                "verify",
+                Some(1000),
+            ))
+            .await
+            .unwrap();
+        store
+            .record_attempt(&AuthAttempt::now(
+                "alice",
+                false,
+                0.0,
+                None,
+                None,
+                "no-face-or-liveness",
+                Some(1000),
+            ))
+            .await
+            .unwrap();
+        store
+            .record_attempt(&AuthAttempt::now(
+                "bob", false, 0.0, None, None, "denied", Some(1001),
+            ))
+            .await
+            .unwrap();
+
+        // Newest first: bob, then alice fail, then alice match.
+        let all = store.recent_attempts(None, 50).await.unwrap();
+        assert_eq!(all.len(), 3);
+        assert_eq!(all[0].user, "bob");
+        assert!(!all[0].matched);
+
+        let alice = store
+            .recent_attempts(Some("alice"), 50)
+            .await
+            .unwrap();
+        assert_eq!(alice.len(), 2);
+        assert!(!alice[0].matched);
+        assert_eq!(alice[0].reason, "no-face-or-liveness");
+        assert!(alice[1].matched);
+        assert!((alice[1].similarity - 0.87).abs() < 1e-6);
+        assert_eq!(alice[1].model_label.as_deref(), Some("normal"));
+
+        // Limit is honoured.
+        let one = store.recent_attempts(Some("alice"), 1).await.unwrap();
+        assert_eq!(one.len(), 1);
     }
 
     #[tokio::test]

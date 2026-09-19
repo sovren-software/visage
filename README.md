@@ -170,9 +170,20 @@ PAM requires a manual one-line edit on Arch — add before `pam_unix.so` in
 auth  [success=done default=ignore]  pam_visage.so
 ```
 
-### Fedora (RPM)
+### Fedora (script — tested on Fedora 44)
 
-No published package yet — build the RPM from source:
+```bash
+sudo dnf install pam-devel clang-devel
+./scripts/install-fedora.sh
+# PAM stays manual (authselect owns system-auth) — 1 line in /etc/pam.d/sudo
+sudo /usr/local/bin/visage onboard
+```
+
+Full guide — PAM wiring, GNOME lock screen, SELinux, suspend/resume,
+3277:0055 hardware notes, troubleshooting, uninstall — see
+[docs/fedora.md](docs/fedora.md).
+
+Prefer the RPM path instead?
 
 ```bash
 cargo install cargo-generate-rpm
@@ -182,13 +193,9 @@ sudo dnf install ./target/generate-rpm/visage-*.x86_64.rpm
 sudo visage onboard
 ```
 
-Fedora has no `pam-auth-update` and `authselect` owns `system-auth`, so PAM is configured
-manually — the package ships the snippet at `/usr/share/visage/pam.d/visage`. Add before
-`pam_unix.so` in `/etc/pam.d/system-auth`:
-
-```
-auth  [success=done default=ignore]  pam_visage.so
-```
+Fedora has no `pam-auth-update` and `authselect` owns `system-auth`, so PAM is
+configured manually per service — never in `system-auth` (authselect overwrites
+it). See [docs/fedora.md](docs/fedora.md) for the `sudo` / `gdm-password` wiring.
 
 Tracking a COPR repository in [#101](https://github.com/sovren-software/visage/issues/101).
 

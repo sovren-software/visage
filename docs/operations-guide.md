@@ -124,7 +124,17 @@ from `/etc/pam.d/system-auth` manually.
 
 ---
 
-### Fedora (RPM, build from source)
+### Fedora (script — tested on Fedora 44)
+
+```bash
+sudo dnf install pam-devel clang-devel
+./scripts/install-fedora.sh
+```
+
+Full guide — PAM wiring per service, GNOME lock screen, SELinux,
+suspend/resume, 3277:0055 notes, uninstall — see [fedora.md](fedora.md).
+
+RPM path (unverified on Fedora 44, kept for reference):
 
 ```bash
 sudo dnf install pam-devel dbus-devel clang-devel
@@ -136,7 +146,8 @@ sudo systemctl enable --now visaged visage-resume
 ```
 
 PAM is manual on Fedora: authselect owns `system-auth` and `password-auth` and overwrites
-edits there. Add the line from `/usr/share/visage/pam.d/visage` as the second line of each
+edits there — never put `pam_visage` in those files. Add the line from
+`/usr/share/visage/pam.d/visage` as the second line of each
 service you want (`sudo`, `polkit-1`, `gdm-password`):
 
 ```text

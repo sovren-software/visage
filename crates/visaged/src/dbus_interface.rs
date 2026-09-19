@@ -7,7 +7,7 @@ use zbus::object_server::SignalEmitter;
 use crate::config::Config;
 use crate::engine::{EngineError, EngineHandle, PreviewFrame};
 use crate::rate_limiter::RateLimiter;
-use crate::store::FaceModelStore;
+use crate::store::{AuthAttempt, FaceModelStore};
 
 /// Shared state accessible by D-Bus method handlers.
 pub struct AppState {
@@ -98,6 +98,14 @@ async fn require_root_caller(
         )));
     }
     Ok(())
+}
+
+/// Best-effort history write: a full disk or locked DB must never fail a login.
+async fn record_history(state: &Arc<Mutex<AppState>>, attempt: AuthAttempt) {
+    let store = state.lock().await.store.clone();
+    if let Err(e) = store.record_attempt(&attempt).await {
+        tracing::warn!(error = %e, "auth history write failed (auth result unaffected)");
+    }
 }
 
 #[interface(name = "org.freedesktop.Visage1")]
@@ -243,12 +251,16 @@ impl VisageService {
         let session_bus = self.state.lock().await.config.session_bus;
 
         // --- UID validation (system bus only) ---
+        // The validated caller UID, for the history row. Root (0) or session-bus
+        // mode records None — there is no per-user caller to distinguish.
+        let mut history_uid: Option<i64> = None;
         if !session_bus {
             let sender = header
                 .sender()
                 .ok_or_else(|| zbus::fdo::Error::Failed("no sender in message".to_string()))?;
             let caller_uid = get_caller_uid(sender.as_str(), conn).await?;
             if caller_uid != 0 {
+                history_uid = Some(caller_uid as i64);
                 match uid_for_name(user) {
                     Some(expected_uid) if caller_uid == expected_uid => {}
                     Some(_) => {
@@ -257,12 +269,22 @@ impl VisageService {
                             caller_uid,
                             "verify: caller UID does not match target user UID"
                         );
+                        record_history(
+                            &self.state,
+                            AuthAttempt::now(user, false, 0.0, None, None, "denied", history_uid),
+                        )
+                        .await;
                         return Err(zbus::fdo::Error::AccessDenied(format!(
                             "caller is not permitted to verify user '{user}'"
                         )));
                     }
                     None => {
                         tracing::warn!(user, "verify: unknown user");
+                        record_history(
+                            &self.state,
+                            AuthAttempt::now(user, false, 0.0, None, None, "denied", history_uid),
+                        )
+                        .await;
                         return Err(zbus::fdo::Error::Failed(format!("unknown user '{user}'")));
                     }
                 }
@@ -272,10 +294,16 @@ impl VisageService {
         // --- Rate limit check ---
         {
             let mut state = self.state.lock().await;
-            state.rate_limiter.check(user).map_err(|msg| {
+            if let Err(msg) = state.rate_limiter.check(user) {
                 tracing::warn!(user, "verify: rate limited");
-                zbus::fdo::Error::Failed(msg)
-            })?;
+                drop(state);
+                record_history(
+                    &self.state,
+                    AuthAttempt::now(user, false, 0.0, None, None, "rate-limited", history_uid),
+                )
+                .await;
+                return Err(zbus::fdo::Error::Failed(msg));
+            }
         }
 
         // --- Fetch gallery and config (release lock before engine call) ---
@@ -350,11 +378,24 @@ impl VisageService {
             }
             Err(e) => {
                 tracing::error!(error = %e, "verify failed");
+                // Runtime failures (camera dark, timeout) are auth failures too —
+                // the user saw a reject. Record best-effort, then report the error.
+                let reason = match &e {
+                    EngineError::NoFaceDetected | EngineError::NoUsableFrames => {
+                        "no-face-or-liveness"
+                    }
+                    _ => "error",
+                };
+                record_history(
+                    &self.state,
+                    AuthAttempt::now(user, false, 0.0, None, None, reason, history_uid),
+                )
+                .await;
                 return Err(zbus::fdo::Error::Failed(e.to_string()));
             }
         };
 
-        // --- Record rate-limit outcome ---
+        // --- Record rate-limit outcome + history (history never fails auth) ---
         {
             let mut state = self.state.lock().await;
             if result.result.matched {
@@ -363,6 +404,35 @@ impl VisageService {
                 state.rate_limiter.record_failure(user);
             }
         }
+        // Deliberately NOT distinguishing wrong-face from liveness-reject here:
+        // telling a caller (or a history reader) that the face *matched* but
+        // liveness vetoed it would leak recognition info. The daemon log keeps
+        // the real reason; history records a plain non-match either way.
+        // ("no-face" is safe to name: it says nobody was in frame, not that a
+        // face was recognised.)
+        let reason = if result.result.matched {
+            "verify"
+        } else if result.result.similarity == 0.0
+            && result.result.model_id.is_none()
+            && result.best_quality == 0.0
+        {
+            "no-face-or-liveness"
+        } else {
+            "verify"
+        };
+        record_history(
+            &self.state,
+            AuthAttempt::now(
+                user,
+                result.result.matched,
+                result.result.similarity,
+                result.result.model_id.clone(),
+                result.result.model_label.clone(),
+                reason,
+                history_uid,
+            ),
+        )
+        .await;
 
         tracing::info!(
             user,
@@ -443,6 +513,29 @@ impl VisageService {
             tracing::warn!(model_id, user, "model not found or not owned by user");
         }
         Ok(removed)
+    }
+
+    /// Recent authentication attempts (newest first) as JSON. Root-only:
+    /// history names who logged in when, so it stays behind the same
+    /// privilege boundary as the enrollment listing.
+    async fn history(
+        &self,
+        user: &str,
+        limit: u32,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] conn: &zbus::Connection,
+    ) -> zbus::fdo::Result<String> {
+        tracing::info!(user, limit, "history requested");
+        let session_bus = self.state.lock().await.config.session_bus;
+        require_root_caller("History", session_bus, &header, conn).await?;
+        let state = self.state.lock().await;
+        let filter = if user.is_empty() { None } else { Some(user) };
+        let attempts = state
+            .store
+            .recent_attempts(filter, limit.max(1) as usize)
+            .await
+            .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
+        serde_json::to_string(&attempts).map_err(|e| zbus::fdo::Error::Failed(e.to_string()))
     }
 }
 
