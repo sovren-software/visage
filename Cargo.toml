@@ -26,7 +26,7 @@ rust-version = "1.88"
 [workspace.dependencies]
 # Terminal UI. `ratatui` re-exports the `crossterm` it was built against, so
 # depending on crossterm separately is how you get two incompatible versions.
-ratatui = "0.29"
+ratatui = "0.30"
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
