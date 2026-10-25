@@ -94,6 +94,20 @@
   This is the test that was missing when `framingMs` went unexposed: a missing option is
   not a build error, not a warning, and not visible in `visage status`.
 
+### Changed
+
+- **A successful verify no longer runs ArcFace on frames after the first match.** The
+  outcome is a match if any frame matches, so once one has, the remaining frames'
+  extractions can only change the reported similarity, never the decision. That was
+  two of three extractions per successful verify at the default
+  `frames_per_verify=3`, the waste `extract_n` in the timing line was added to expose.
+  With liveness on, the remaining frames are still run through detection, because the
+  landmark check needs every frame and fails closed without them; with liveness off
+  they are skipped entirely.
+
+  The reported similarity is now that of the first matching frame rather than the
+  best one. Failed verifies are unchanged: every frame is still examined.
+
 ### Removed
 
 - **`visage-gui`, the egui enrollment prototype.** It existed to settle whether a
