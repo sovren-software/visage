@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Visage biometric authentication daemon"
 
+[features]
+# GPU inference through OpenVINO; see visage-core.
+openvino = ["visage-core/openvino"]
+
 [[bin]]
 name = "visaged"
 path = "src/main.rs"

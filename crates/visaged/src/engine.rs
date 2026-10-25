@@ -208,10 +208,10 @@ pub fn spawn_engine(
     );
 
     let mut detector = visage_core::FaceDetector::load(scrfd_path, inference)?;
-    tracing::info!(path = scrfd_path, "SCRFD detector loaded");
+    tracing::info!(path = scrfd_path, device = ?detector.device(), "SCRFD detector loaded");
 
     let mut recognizer = visage_core::FaceRecognizer::load(arcface_path, inference)?;
-    tracing::info!(path = arcface_path, "ArcFace recognizer loaded");
+    tracing::info!(path = arcface_path, device = ?recognizer.device(), "ArcFace recognizer loaded");
 
     // Probe for IR emitter quirk
     let emitter: Option<IrEmitter> = if emitter_enabled {

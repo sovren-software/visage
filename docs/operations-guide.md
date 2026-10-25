@@ -368,7 +368,9 @@ Environment=VARIABLE=value
 | `VISAGE_EMITTER_ENABLED` | `1` | Set to `0` to disable IR emitter |
 | `VISAGE_LIVENESS_ENABLED` | `1` | Set to `0` to disable passive liveness detection (development only) |
 | `VISAGE_LIVENESS_MIN_DISPLACEMENT` | `0.8` | Minimum eye landmark displacement (px) for liveness check |
+| `VISAGE_INFERENCE_DEVICE` | `cpu` | `gpu` runs the models through OpenVINO (see [GPU inference](#gpu-inference-optional)); falls back to `cpu` if unavailable |
 | `VISAGE_CPU_THREADS` | `2` | ONNX Runtime threads per model. Around the number of physical cores is a good start; `detect_ms` and `extract_ms` in the verify timing line show the effect |
+| `VISAGE_INFERENCE_CACHE_DIR` | `gpu-cache` beside the model dir | Compiled GPU kernels, so a daemon start does not recompile both models |
 | `VISAGE_SESSION_BUS` | unset | Set to `1` to use session bus (development only) |
 
 ### Tuning the similarity threshold
@@ -386,6 +388,40 @@ to fall back to password frequently), consider re-enrolling with better lighting
 the threshold to 0.35.
 
 ---
+
+### GPU inference (optional)
+
+Both models can run on a GPU through [OpenVINO](https://github.com/openvinotoolkit/openvino)
+instead of on the CPU. It needs three things:
+
+1. A build with the `openvino` feature:
+   `cargo build --release --workspace --features visaged/openvino`.
+   The OpenVINO runtime is loaded when first used, not linked, so this build still runs
+   on the CPU where OpenVINO is not installed.
+2. The OpenVINO runtime and its GPU plugin, e.g. `openvino` and
+   `openvino-intel-gpu-plugin` on Arch, plus the GPU's compute driver
+   (`intel-compute-runtime` for Intel GPUs).
+3. Access to the GPU from the sandboxed service, and the device setting:
+
+   ```ini
+   # sudo systemctl edit visaged
+   [Service]
+   DeviceAllow=char-drm rw
+   Environment=VISAGE_INFERENCE_DEVICE=gpu
+   ```
+
+   On NixOS, `services.visage.inference.device = "gpu"` sets both.
+
+Check `journalctl -u visaged` after a restart: both `loaded` lines should say
+`device=Gpu`. If anything is missing, the daemon logs `GPU inference unavailable,
+falling back to the CPU` and keeps working on the CPU. A GPU problem never disables face
+authentication.
+
+The first start compiles GPU kernels for both models, which takes several seconds on an
+integrated GPU, and caches them in `VISAGE_INFERENCE_CACHE_DIR`. Later starts, including
+the restart after every resume, load them from the cache.
+
+Without a GPU, raising `VISAGE_CPU_THREADS` is the cheaper speed-up.
 
 ## GNOME: keyring and the login screen
 

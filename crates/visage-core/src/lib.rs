@@ -1,7 +1,8 @@
 //! visage-core — Face detection and recognition engine.
 //!
-//! Uses SCRFD for face detection and ArcFace for face recognition,
-//! both running via ONNX Runtime for CPU inference.
+//! Uses SCRFD for face detection and ArcFace for face recognition, both
+//! running via ONNX Runtime on the CPU, or via OpenVINO on a GPU in builds
+//! with the `openvino` feature (see [`inference`]).
 
 pub mod alignment;
 pub mod detector;
@@ -11,7 +12,7 @@ pub mod recognizer;
 pub mod types;
 
 pub use detector::FaceDetector;
-pub use inference::InferenceOptions;
+pub use inference::{Device, InferenceOptions};
 pub use liveness::{check_landmark_stability, LivenessResult};
 pub use recognizer::FaceRecognizer;
 pub use types::{BoundingBox, CosineMatcher, Embedding, FaceModel, MatchResult, Matcher};

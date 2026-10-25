@@ -169,6 +169,23 @@ in
       '';
     };
 
+    inference.device = lib.mkOption {
+      type = lib.types.nullOr (lib.types.enum [ "cpu" "gpu" ]);
+      default = null;
+      example = "gpu";
+      description = ''
+        Where the face models run. When null, the daemon uses the CPU
+        (ONNX Runtime).
+
+        `gpu` runs them through OpenVINO and needs a package built with the
+        `openvino` cargo feature plus the OpenVINO runtime and its GPU plugin.
+        If any of that is missing, or the GPU fails to compile a model, the
+        daemon logs a warning and uses the CPU: a GPU problem never disables
+        face authentication. Setting `gpu` also lets the service open the
+        GPU's DRM render node (`DeviceAllow = char-drm rw`).
+      '';
+    };
+
     inference.cpuThreads = lib.mkOption {
       type = lib.types.nullOr lib.types.ints.positive;
       default = null;
@@ -177,6 +194,17 @@ in
         ONNX Runtime threads per model on the CPU. When null, the daemon uses
         its compiled default (2). Around the number of physical cores is a
         good start; measure with the verify timing line.
+      '';
+    };
+
+    inference.cacheDir = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "/var/lib/visage/gpu-cache";
+      description = ''
+        Where compiled GPU kernels are cached. When null, the daemon uses
+        `gpu-cache` next to the model directory. Without a writable cache
+        every daemon start recompiles both models, which takes seconds.
       '';
     };
 
@@ -314,8 +342,12 @@ in
         VISAGE_FRAMING_MS = toString cfg.framingMs;
       } // lib.optionalAttrs (cfg.verifyTimeoutSeconds != null) {
         VISAGE_VERIFY_TIMEOUT_SECS = toString cfg.verifyTimeoutSeconds;
+      } // lib.optionalAttrs (cfg.inference.device != null) {
+        VISAGE_INFERENCE_DEVICE = cfg.inference.device;
       } // lib.optionalAttrs (cfg.inference.cpuThreads != null) {
         VISAGE_CPU_THREADS = toString cfg.inference.cpuThreads;
+      } // lib.optionalAttrs (cfg.inference.cacheDir != null) {
+        VISAGE_INFERENCE_CACHE_DIR = cfg.inference.cacheDir;
       } // lib.optionalAttrs (!cfg.emitter.enable) {
         VISAGE_EMITTER_ENABLED = "0";
       };
@@ -342,7 +374,9 @@ in
         ProtectSystem = "strict";
         ProtectHome = true;
         PrivateTmp = true;
-        DeviceAllow = [ "char-video4linux rw" ];
+        # The GPU's render node only when GPU inference is asked for.
+        DeviceAllow = [ "char-video4linux rw" ]
+          ++ lib.optional (cfg.inference.device == "gpu") "char-drm rw";
         ReadWritePaths = [ "/var/lib/visage" ];
         CapabilityBoundingSet = "";
         SystemCallArchitectures = "native";
