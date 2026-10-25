@@ -368,6 +368,7 @@ Environment=VARIABLE=value
 | `VISAGE_EMITTER_ENABLED` | `1` | Set to `0` to disable IR emitter |
 | `VISAGE_LIVENESS_ENABLED` | `1` | Set to `0` to disable passive liveness detection (development only) |
 | `VISAGE_LIVENESS_MIN_DISPLACEMENT` | `0.8` | Minimum eye landmark displacement (px) for liveness check |
+| `VISAGE_CPU_THREADS` | `2` | ONNX Runtime threads per model. Around the number of physical cores is a good start; `detect_ms` and `extract_ms` in the verify timing line show the effect |
 | `VISAGE_SESSION_BUS` | unset | Set to `1` to use session bus (development only) |
 
 ### Tuning the similarity threshold

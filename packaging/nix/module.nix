@@ -169,6 +169,17 @@ in
       '';
     };
 
+    inference.cpuThreads = lib.mkOption {
+      type = lib.types.nullOr lib.types.ints.positive;
+      default = null;
+      example = 4;
+      description = ''
+        ONNX Runtime threads per model on the CPU. When null, the daemon uses
+        its compiled default (2). Around the number of physical cores is a
+        good start; measure with the verify timing line.
+      '';
+    };
+
     emitter.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -303,6 +314,8 @@ in
         VISAGE_FRAMING_MS = toString cfg.framingMs;
       } // lib.optionalAttrs (cfg.verifyTimeoutSeconds != null) {
         VISAGE_VERIFY_TIMEOUT_SECS = toString cfg.verifyTimeoutSeconds;
+      } // lib.optionalAttrs (cfg.inference.cpuThreads != null) {
+        VISAGE_CPU_THREADS = toString cfg.inference.cpuThreads;
       } // lib.optionalAttrs (!cfg.emitter.enable) {
         VISAGE_EMITTER_ENABLED = "0";
       };

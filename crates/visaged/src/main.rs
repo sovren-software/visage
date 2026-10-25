@@ -31,6 +31,7 @@ async fn main() -> Result<()> {
         model_dir = %config.model_dir.display(),
         db_path = %config.db_path.display(),
         threshold = config.similarity_threshold,
+        cpu_threads = config.inference.cpu_threads,
         session_bus = config.session_bus,
         "configuration loaded"
     );
@@ -49,6 +50,7 @@ async fn main() -> Result<()> {
         &config.camera_device,
         &config.scrfd_model_path(),
         &config.arcface_model_path(),
+        &config.inference,
         config.warmup_frames,
         config.emitter_enabled,
     )?;

@@ -193,6 +193,7 @@ pub fn spawn_engine(
     camera_device: &str,
     scrfd_path: &str,
     arcface_path: &str,
+    inference: &visage_core::InferenceOptions,
     warmup_frames: usize,
     emitter_enabled: bool,
 ) -> Result<EngineHandle, EngineError> {
@@ -206,10 +207,10 @@ pub fn spawn_engine(
         "camera opened"
     );
 
-    let mut detector = visage_core::FaceDetector::load(scrfd_path)?;
+    let mut detector = visage_core::FaceDetector::load(scrfd_path, inference)?;
     tracing::info!(path = scrfd_path, "SCRFD detector loaded");
 
-    let mut recognizer = visage_core::FaceRecognizer::load(arcface_path)?;
+    let mut recognizer = visage_core::FaceRecognizer::load(arcface_path, inference)?;
     tracing::info!(path = arcface_path, "ArcFace recognizer loaded");
 
     // Probe for IR emitter quirk

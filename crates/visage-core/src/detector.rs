@@ -3,6 +3,7 @@
 //! Implements the SCRFD (Sample and Computation Redistribution for Efficient Face
 //! Detection) model with 3-stride anchor-free decoding and NMS post-processing.
 
+use crate::inference::InferenceOptions;
 use crate::types::BoundingBox;
 use ndarray::Array4;
 use ort::session::Session;
@@ -53,13 +54,13 @@ pub struct FaceDetector {
 
 impl FaceDetector {
     /// Load the SCRFD ONNX model from the given path.
-    pub fn load(model_path: &str) -> Result<Self, DetectorError> {
+    pub fn load(model_path: &str, options: &InferenceOptions) -> Result<Self, DetectorError> {
         if !Path::new(model_path).exists() {
             return Err(DetectorError::ModelNotFound(model_path.to_string()));
         }
 
         let session = Session::builder()?
-            .with_intra_threads(2)?
+            .with_intra_threads(options.cpu_threads.max(1))?
             .commit_from_file(model_path)?;
 
         let output_names: Vec<String> = session
