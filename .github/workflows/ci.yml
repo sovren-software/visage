@@ -229,6 +229,38 @@ jobs:
       - name: Clippy on current stable
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+  openvino-feature:
+    # The `openvino` feature is off in every package, so the jobs above never
+    # compile its code. Without this job a refactor could break it unnoticed
+    # until a user enabled it. `runtime-linking` means no OpenVINO install is
+    # needed to build or lint it.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libpam0g-dev libdbus-1-dev
+
+      - name: Read the pinned toolchain
+        id: toolchain
+        run: |
+          set -euo pipefail
+          channel="$(grep '^channel' rust-toolchain.toml | sed 's/.*"\(.*\)"/\1/')"
+          if [ -z "$channel" ]; then
+            echo "::error::no channel found in rust-toolchain.toml"
+            exit 1
+          fi
+          echo "channel=${channel}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          components: clippy
+
+      - name: Clippy with the openvino feature
+        run: cargo clippy -p visaged --features openvino --all-targets -- -D warnings
+
   msrv:
     # Verifies the MSRV we PUBLISH is true.
     #
