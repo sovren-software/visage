@@ -113,7 +113,7 @@ VID:PID to the correct control bytes for each known device.
 
 | Device | VID:PID | Notes |
 |--------|---------|-------|
-| ASUS Zenbook 14 UM3406HA (Shinetech module) | `3277:0055` | No quirk — but the **emitter strobes anyway** by firmware default, so face auth works without one. Exposes the Microsoft Camera Control XU (`{0f3f95dc-2632-4c4e-92c9-a04782f43bc8}`) at unit 14 advertising `MSXU_CONTROL_FACE_AUTHENTICATION` (selector 6) and `MSXU_CONTROL_METADATA` (selector 9) — **not** `IR_TORCH`. See [report](hardware-reports/asus-zenbook-um3406ha-3277-0055.md). |
+| ASUS Zenbook 14 UM3406HA (Shinetech module) | `3277:0055` | No quirk — but the **emitter strobes anyway** by firmware default, so face auth works without one. Exposes the Microsoft Camera Control XU (`{0f3f95dc-2632-4c4e-92c9-a04782f43bc8}`) at unit 14 advertising `MSXU_CONTROL_FACE_AUTHENTICATION` (selector 6) and `MSXU_CONTROL_METADATA` (selector 9) — **not** `IR_TORCH`. **Decision (2026-11-09, #117): no quirk entry**, because no control is needed to light the emitter. Revisit if explicit control bytes turn out to end the all-dark stretches seen on one unit (cause not yet known). **Liveness (#118): set `VISAGE_LIVENESS_MIN_DISPLACEMENT=0.1`** on this module. At the 0.8 default, 13–17% of genuine attempts failed, and the metric did not stop a hand-held screen spoof, so the password fallback is the real control. See [report](hardware-reports/asus-zenbook-um3406ha-3277-0055.md). |
 
 ⚠️ **A missing quirk does not imply missing illumination.** On modules whose firmware
 enables face-auth mode by default, the emitter fires regardless and `visaged` still logs
