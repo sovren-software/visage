@@ -30,6 +30,31 @@
   although the 0.41.0 release note says it lowered the MSRV to 1.88. The `msrv` CI job
   checks the new value.
 
+- **`pam_visage` retries until its `timeout=N` budget runs out** (#127, thanks
+  @ProjectInitiative). `timeout=N` used to bound one `Verify` call; it is now the total
+  budget for one attempt. Transient failures (no face in frame, dark frames, the daemon
+  restarting after resume, #123) are retried every 200 ms, and a face that was seen but did
+  not match gets one more try after 1.5 s. Visaged counts only real non-matches toward its
+  lockout, so the fast retries cost nothing there. ⚠️ A stopped daemon now costs the full
+  `timeout=N` on every authentication instead of failing at once.
+
+  Errors no retry can fix end the attempt at once: an active lockout, a missing
+  enrollment, an unknown user, or a refused caller (`AccessDenied`). They live in one
+  table, `PERMANENT_ERRORS`, and `pam_retry_contract.rs` fails CI if visaged stops
+  producing any of them, so a reworded message cannot turn a lockout into a retry loop.
+
+- **A successful verify no longer runs ArcFace on frames after the first match.** The
+  outcome is a match if any frame matches, so once one has, the remaining frames'
+  extractions can only change the reported similarity, never the decision. That was
+  two of three extractions per successful verify at the default
+  `frames_per_verify=3`, the waste `extract_n` in the timing line was added to expose.
+  With liveness on, the remaining frames are still run through detection, because the
+  landmark check needs every frame and fails closed without them; with liveness off
+  they are skipped entirely.
+
+  The reported similarity is now that of the first matching frame rather than the
+  best one. Failed verifies are unchanged: every frame is still examined.
+
 ### Added
 
 - **`VISAGE_CPU_THREADS`: ONNX Runtime threads per model**, previously hard-coded to 2.
@@ -113,20 +138,6 @@
 
   This is the test that was missing when `framingMs` went unexposed: a missing option is
   not a build error, not a warning, and not visible in `visage status`.
-
-### Changed
-
-- **A successful verify no longer runs ArcFace on frames after the first match.** The
-  outcome is a match if any frame matches, so once one has, the remaining frames'
-  extractions can only change the reported similarity, never the decision. That was
-  two of three extractions per successful verify at the default
-  `frames_per_verify=3`, the waste `extract_n` in the timing line was added to expose.
-  With liveness on, the remaining frames are still run through detection, because the
-  landmark check needs every frame and fails closed without them; with liveness off
-  they are skipped entirely.
-
-  The reported similarity is now that of the first matching frame rather than the
-  best one. Failed verifies are unchanged: every frame is still examined.
 
 ### Removed
 

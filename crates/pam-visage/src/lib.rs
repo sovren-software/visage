@@ -49,6 +49,31 @@ const LOG_ERR: libc::c_int = 3;
 const FAST_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
 const SLOW_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(1500);
 
+/// Errors that no retry can fix, each with the reason logged when it ends the
+/// loop. Every other error is treated as transient and retried until the
+/// `timeout=N` budget runs out.
+///
+/// Each needle is a substring of an error visaged (or zbus, for
+/// `AccessDenied`) produces today. `crates/visaged/tests/pam_retry_contract.rs`
+/// fails if any of them stops appearing in the daemon's source, so a reworded
+/// message cannot quietly turn a lockout into a retry loop.
+const PERMANENT_ERRORS: &[(&str, &str)] = &[
+    // An active lockout must not be hammered: visaged owns the counter.
+    ("too many failed attempts", "rate limited by visaged"),
+    ("no enrolled models", "no enrolled models for user"),
+    ("unknown user", "unknown user"),
+    // The caller is not allowed to ask; asking again changes nothing.
+    ("AccessDenied", "verify refused"),
+];
+
+/// The log reason if `msg` is an error that retrying cannot fix.
+fn permanent_error(msg: &str) -> Option<&'static str> {
+    PERMANENT_ERRORS
+        .iter()
+        .find(|(needle, _)| msg.contains(needle))
+        .map(|(_, reason)| *reason)
+}
+
 extern "C" {
     fn pam_get_user(
         pamh: *mut libc::c_void,
@@ -345,15 +370,8 @@ pub unsafe extern "C" fn pam_sm_authenticate(
                 }
                 Err(e) => {
                     let msg = e.to_string();
-                    // An active lockout must not be hammered — the counter is
-                    // owned by visaged and only it decides when it expires.
-                    if msg.contains("too many failed attempts") {
-                        syslog_msg(LOG_WARNING, &format!("rate limited by visaged: {}", msg));
-                        return PAM_IGNORE;
-                    }
-                    // A missing enrollment cannot be fixed by retrying.
-                    if msg.contains("no enrolled models") {
-                        syslog_msg(LOG_WARNING, "no enrolled models for user");
+                    if let Some(reason) = permanent_error(&msg) {
+                        syslog_msg(LOG_WARNING, &format!("{reason}: {msg}"));
                         return PAM_IGNORE;
                     }
                     // Everything else is transient: no face in frame, dark
@@ -459,6 +477,34 @@ mod tests {
             Ok(_) => {
                 // Daemon is running — acceptable, confirms no panic either way
             }
+        }
+    }
+
+    /// Messages as `e.to_string()` renders them for the errors that must end
+    /// the loop at once.
+    #[test]
+    fn permanent_errors_end_the_loop() {
+        for msg in [
+            "org.freedesktop.DBus.Error.Failed: too many failed attempts; try again in 30s",
+            "org.freedesktop.DBus.Error.Failed: no enrolled models for user 'cc'",
+            "org.freedesktop.DBus.Error.Failed: unknown user 'ghost'",
+            "org.freedesktop.DBus.Error.AccessDenied: caller uid 1000 may not verify 'root'",
+        ] {
+            assert!(permanent_error(msg).is_some(), "should not retry: {msg}");
+        }
+    }
+
+    /// The control for the test above: the errors #127 exists to retry must
+    /// stay retryable, or the loop would give up on the first dark frame.
+    #[test]
+    fn transient_errors_are_retried() {
+        for msg in [
+            "org.freedesktop.DBus.Error.Failed: no face detected in any captured frame",
+            "org.freedesktop.DBus.Error.Failed: no usable frames captured (camera returned only dark or unreadable frames)",
+            "org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.Visage1 was not provided by any .service files",
+            "org.freedesktop.DBus.Error.NoReply: Did not receive a reply",
+        ] {
+            assert_eq!(permanent_error(msg), None, "should retry: {msg}");
         }
     }
 
