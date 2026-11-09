@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Security
+
+- **Seven RustSec advisories in the TLS stack, cleared by lockfile updates.**
+  `rustls` 0.23.45 → 0.23.46 (RUSTSEC-2026-0346, -0347, -0348, -0349),
+  `rustls-webpki` 0.103.15 → 0.103.16 (RUSTSEC-2026-0382), `webpki-roots` and
+  `webpki-root-certs` 1.0.6 → 1.0.11 (RUSTSEC-2026-0381, -0383). The stack reaches the tree
+  only through `ureq`, which `visage-cli` uses to download models and `ort`/`ort-sys` use
+  at build time. The daemon has no network access, so none of these were reachable from
+  `visaged`. The scheduled Security Audit had failed every week since 2026-10-19.
+
+  ⚠️ One advisory remains: RUSTSEC-2026-0459 in the bundled SQLite of `libsqlite3-sys`
+  0.30.1. Its fix needs `rusqlite` 0.41, and `tokio-rusqlite` does not yet support that
+  version, so it lands separately.
+
 ### Added
 
 - **A framing phase before each enrollment capture.** The user gets a moment to see

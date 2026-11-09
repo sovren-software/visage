@@ -677,10 +677,15 @@ fn run_strobe_measurement(device_path: &str, secs: u64, label: &str) -> Result<(
         if v.is_empty() {
             return 0.0;
         }
-        v.iter().map(|s| f(*s)).sum::<f32>() / v.len() as f32
+        v.iter().map(|s| f(s)).sum::<f32>() / v.len() as f32
     };
 
-    println!("\n  frames: {} total — {} lit, {} dark", samples.len(), lit.len(), dark.len());
+    println!(
+        "\n  frames: {} total — {} lit, {} dark",
+        samples.len(),
+        lit.len(),
+        dark.len()
+    );
 
     if lit.is_empty() || dark.is_empty() {
         println!(
@@ -697,15 +702,25 @@ fn run_strobe_measurement(device_path: &str, secs: u64, label: &str) -> Result<(
     let lit_top = avg(&lit, |s| s.top);
     let dark_top = avg(&dark, |s| s.top);
 
-    println!("\n  whole frame   lit {lit_mean:6.2}   dark {dark_mean:6.2}   delta {:6.2}", lit_mean - dark_mean);
-    println!("  top decile    lit {lit_top:6.2}   dark {dark_top:6.2}   delta {:6.2}", lit_top - dark_top);
+    println!(
+        "\n  whole frame   lit {lit_mean:6.2}   dark {dark_mean:6.2}   delta {:6.2}",
+        lit_mean - dark_mean
+    );
+    println!(
+        "  top decile    lit {lit_top:6.2}   dark {dark_top:6.2}   delta {:6.2}",
+        lit_top - dark_top
+    );
 
     // Adjacent pairs control for drift: a slow exposure ramp would move both
     // halves together and inflate a naive difference of group means.
     let mut pair_deltas: Vec<f32> = Vec::new();
     for w in samples.windows(2) {
         if w[0].dark != w[1].dark {
-            let (l, d) = if w[0].dark { (&w[1], &w[0]) } else { (&w[0], &w[1]) };
+            let (l, d) = if w[0].dark {
+                (&w[1], &w[0])
+            } else {
+                (&w[0], &w[1])
+            };
             pair_deltas.push(l.top - d.top);
         }
     }
@@ -758,7 +773,7 @@ mod tests {
     fn the_top_decile_tracks_the_bright_region_and_ignores_the_background() {
         // 10% at 200, 90% at 10 — a face-sized bright patch on a dark field.
         let mut frame = vec![10u8; 900];
-        frame.extend(std::iter::repeat(200u8).take(100));
+        frame.extend(std::iter::repeat_n(200u8, 100));
 
         let whole = frame.iter().map(|&b| b as f32).sum::<f32>() / frame.len() as f32;
         let top = top_decile_mean(&frame);
