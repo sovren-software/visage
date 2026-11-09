@@ -82,6 +82,13 @@
 
 ### Added
 
+- **A verify that sees only dark frames now logs why it might have.** One warning lists
+  each rejected frame's sequence number and its mean and 99th-percentile brightness. On one
+  ASUS UM3406HA (`3277:0055`), stretches of all-dark verifies have lasted from seconds to
+  four days, survived camera reopens and cleared only at reboot, cause unknown. Values at
+  the sensor's black level on every frame point at something over the lens; a p99 well
+  above it means the sensor sees a scene the emitter did not light.
+
 - **Optional GPU inference through OpenVINO (`openvino` cargo feature,
   `VISAGE_INFERENCE_DEVICE=gpu`).** Both models run on the GPU instead of ONNX Runtime
   on the CPU. The default build and the default setting are unchanged.
