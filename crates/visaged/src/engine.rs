@@ -612,6 +612,53 @@ fn frame_work(matched: bool, liveness_enabled: bool) -> FrameWork {
     }
 }
 
+/// Brightness of one frame the dark filter rejected, kept for the log line a
+/// verify writes when it saw nothing else.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct DarkFrame {
+    sequence: u32,
+    /// Mean pixel value, 0-255.
+    mean: f32,
+    /// 99th-percentile pixel value, 0-255.
+    p99: u8,
+}
+
+/// Most dark frames a verify keeps for that log line.
+const DARK_FRAMES_LOGGED: usize = 32;
+
+fn dark_frame_stats(sequence: u32, data: &[u8]) -> DarkFrame {
+    let mut histogram = [0usize; 256];
+    for &px in data {
+        histogram[px as usize] += 1;
+    }
+    let n = data.len().max(1);
+    let sum: usize = histogram.iter().enumerate().map(|(v, c)| v * c).sum();
+    let rank = (n * 99).div_ceil(100);
+    let mut seen = 0;
+    let mut p99 = 0u8;
+    for (value, count) in histogram.iter().enumerate() {
+        seen += count;
+        if seen >= rank {
+            p99 = value as u8;
+            break;
+        }
+    }
+    DarkFrame {
+        sequence,
+        mean: sum as f32 / n as f32,
+        p99,
+    }
+}
+
+/// `seq 41: 1.0/2, seq 42: 1.1/2` — sequence, mean / 99th percentile.
+fn describe_dark_frames(frames: &[DarkFrame]) -> String {
+    frames
+        .iter()
+        .map(|f| format!("seq {}: {:.1}/{}", f.sequence, f.mean, f.p99))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// What one frame showed, as far as the verify decision is concerned.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FrameSeen {
@@ -803,6 +850,7 @@ fn run_verify(
     let mut budget = FrameBudget::new(frames_count, liveness_enabled);
     let mut evidence = Evidence::default();
     let mut outcome: Option<Result<(), EngineError>> = None;
+    let mut dark_frames: Vec<DarkFrame> = Vec::new();
 
     activate_emitter(emitter);
     let t_stream = std::time::Instant::now();
@@ -814,6 +862,9 @@ fn run_verify(
 
         let seen = if frame.is_dark {
             timing.dark_skipped += 1;
+            if dark_frames.len() < DARK_FRAMES_LOGGED {
+                dark_frames.push(dark_frame_stats(frame.sequence, &frame.data));
+            }
             FrameSeen::Dark
         } else {
             timing.frames += 1;
@@ -854,6 +905,17 @@ fn run_verify(
         dark_skipped = timing.dark_skipped,
         "verify: streamed frames"
     );
+    if matches!(outcome, Some(Err(EngineError::NoUsableFrames))) {
+        // The cause of all-dark verifies is not known yet (a covered lens or
+        // shutter, an emitter that did not light, a threshold problem). These
+        // numbers tell them apart: values at the sensor's black level on every
+        // frame point at something over the lens; a p99 well above it means
+        // the sensor sees a scene that the emitter did not light.
+        tracing::warn!(
+            frames = %describe_dark_frames(&dark_frames),
+            "verify saw only dark frames (mean/p99 brightness, 0-255)"
+        );
+    }
     // The stream only ends through the closure, which always records why.
     outcome.unwrap_or(Err(EngineError::NoUsableFrames))?;
 
@@ -1036,6 +1098,52 @@ mod tests {
         assert_eq!(b.record(FrameSeen::NoFace), Step::Continue);
         // Ninth attempt: usable frames, but no face.
         assert_eq!(b.record(FrameSeen::NoFace), Step::NoFace);
+    }
+
+    /// A lens covered by a shutter reads flat at the black level.
+    #[test]
+    fn dark_frame_stats_of_a_flat_frame() {
+        let f = dark_frame_stats(41, &[1u8; 1000]);
+        assert_eq!(
+            f,
+            DarkFrame {
+                sequence: 41,
+                mean: 1.0,
+                p99: 1
+            }
+        );
+    }
+
+    /// A small bright patch (2% of pixels) moves p99 but barely moves the
+    /// mean, so p99 is what separates "sensor sees a scene" from "covered".
+    #[test]
+    fn dark_frame_stats_see_a_small_bright_patch() {
+        let mut data = vec![2u8; 980];
+        data.extend(std::iter::repeat_n(120u8, 20));
+        let f = dark_frame_stats(7, &data);
+        assert_eq!(f.p99, 120);
+        assert!((f.mean - 4.36).abs() < 1e-4, "mean {}", f.mean);
+    }
+
+    #[test]
+    fn dark_frames_are_described_in_order() {
+        let frames = [
+            DarkFrame {
+                sequence: 41,
+                mean: 1.0,
+                p99: 2,
+            },
+            DarkFrame {
+                sequence: 42,
+                mean: 4.36,
+                p99: 120,
+            },
+        ];
+        assert_eq!(
+            describe_dark_frames(&frames),
+            "seq 41: 1.0/2, seq 42: 4.4/120"
+        );
+        assert_eq!(describe_dark_frames(&[]), "");
     }
 }
 
