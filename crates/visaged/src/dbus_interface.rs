@@ -285,6 +285,7 @@ impl VisageService {
             threshold,
             frames_count,
             timeout_secs,
+            face_wait,
             liveness_enabled,
             liveness_min_displacement,
         ) = {
@@ -299,6 +300,7 @@ impl VisageService {
                 state.config.similarity_threshold,
                 state.config.frames_per_verify,
                 state.config.verify_timeout_secs,
+                state.config.face_wait,
                 state.config.liveness_enabled,
                 state.config.liveness_min_displacement,
             )
@@ -322,6 +324,7 @@ impl VisageService {
                 threshold,
                 frames_count,
                 timeout,
+                face_wait,
                 liveness_enabled,
                 liveness_min_displacement,
             )
@@ -388,6 +391,7 @@ impl VisageService {
             "models_enrolled": model_count,
             "similarity_threshold": state.config.similarity_threshold,
             "verify_timeout_secs": state.config.verify_timeout_secs,
+            "face_wait_ms": state.config.face_wait.as_millis() as u64,
             "warmup_frames": state.config.warmup_frames,
             "frames_per_verify": state.config.frames_per_verify,
             "frames_per_enroll": state.config.frames_per_enroll,

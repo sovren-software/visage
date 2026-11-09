@@ -208,6 +208,29 @@ in
       '';
     };
 
+    faceWaitMs = lib.mkOption {
+      type = lib.types.nullOr lib.types.ints.unsigned;
+      default = null;
+      example = 2500;
+      description = ''
+        How long, in milliseconds, a verification keeps looking, on the
+        same camera stream, while no face has been seen yet. When null, the
+        daemon uses its compiled default (0, one group of frames).
+
+        Authentication often starts before the user is in front of the
+        camera: the lid is still opening, or the sensor is still dark after
+        resume. `pam_visage` retries such a verification anyway, but each
+        retry starts the camera again; with a window set, the daemon keeps
+        reading the stream and notices the face within a frame or two. A
+        face that is seen ends the verification, matched or not, so this
+        never adds attempts against an enrolled face.
+
+        Keep it below the PAM module's budget (`pam_visage.so timeout=N`,
+        default 3 seconds). The window is also capped by the daemon's
+        verify timeout (`verifyTimeoutSeconds`, default 10).
+      '';
+    };
+
     emitter.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -348,6 +371,8 @@ in
         VISAGE_CPU_THREADS = toString cfg.inference.cpuThreads;
       } // lib.optionalAttrs (cfg.inference.cacheDir != null) {
         VISAGE_INFERENCE_CACHE_DIR = cfg.inference.cacheDir;
+      } // lib.optionalAttrs (cfg.faceWaitMs != null) {
+        VISAGE_FACE_WAIT_MS = toString cfg.faceWaitMs;
       } // lib.optionalAttrs (!cfg.emitter.enable) {
         VISAGE_EMITTER_ENABLED = "0";
       };
