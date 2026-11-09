@@ -4,6 +4,7 @@
 //! using the w600k_r50 ArcFace model.
 
 use crate::alignment;
+use crate::inference::InferenceOptions;
 use crate::types::{BoundingBox, Embedding};
 use ndarray::Array4;
 use ort::session::Session;
@@ -37,13 +38,13 @@ pub struct FaceRecognizer {
 
 impl FaceRecognizer {
     /// Load the ArcFace ONNX model from the given path.
-    pub fn load(model_path: &str) -> Result<Self, RecognizerError> {
+    pub fn load(model_path: &str, options: &InferenceOptions) -> Result<Self, RecognizerError> {
         if !Path::new(model_path).exists() {
             return Err(RecognizerError::ModelNotFound(model_path.to_string()));
         }
 
         let session = Session::builder()?
-            .with_intra_threads(2)?
+            .with_intra_threads(options.cpu_threads.max(1))?
             .commit_from_file(model_path)?;
 
         tracing::info!(

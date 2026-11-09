@@ -394,6 +394,7 @@ impl VisageService {
             "emitter_enabled": state.config.emitter_enabled,
             "liveness_enabled": state.config.liveness_enabled,
             "liveness_min_displacement": state.config.liveness_min_displacement,
+            "cpu_threads": state.config.inference.cpu_threads,
             "session_bus": state.config.session_bus,
         })
         .to_string())

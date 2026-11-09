@@ -32,6 +32,12 @@
 
 ### Added
 
+- **`VISAGE_CPU_THREADS`: ONNX Runtime threads per model**, previously hard-coded to 2.
+  The default is unchanged. On a 4-core, 8-thread i7-1160G7 (plugged in, balanced
+  profile), 4 threads took SCRFD from about 165 to 125 ms and ArcFace from about 135 to
+  100 ms per frame. Also `services.visage.inference.cpuThreads` on NixOS and
+  `cpu_threads` in `visage status`.
+
 - **A framing phase before each enrollment capture.** The user gets a moment to see
   themselves and get centred before anything is captured, instead of being told to
   look at a lens and hoping.

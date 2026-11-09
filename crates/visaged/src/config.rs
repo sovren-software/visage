@@ -32,6 +32,9 @@ pub struct Config {
     /// Lower values are more permissive; higher values reject more aggressively.
     /// Only used when `liveness_enabled` is true.
     pub liveness_min_displacement: f32,
+    /// How the face models run: `VISAGE_CPU_THREADS` sets ONNX Runtime's
+    /// threads per model.
+    pub inference: visage_core::InferenceOptions,
     /// Whether the daemon is running on the session bus (development mode).
     /// UID validation is skipped on the session bus — all callers share the same user.
     pub session_bus: bool,
@@ -77,6 +80,9 @@ impl Config {
                 .map(|v| v != "0")
                 .unwrap_or(true),
             liveness_min_displacement: env_f32("VISAGE_LIVENESS_MIN_DISPLACEMENT", 0.8),
+            inference: visage_core::InferenceOptions {
+                cpu_threads: env_usize("VISAGE_CPU_THREADS", 2).max(1),
+            },
             session_bus: parse_session_bus(std::env::var("VISAGE_SESSION_BUS").ok().as_deref()),
         }
     }
