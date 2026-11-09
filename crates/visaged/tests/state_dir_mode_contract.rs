@@ -41,9 +41,7 @@ fn code_lines(body: &str) -> Vec<&str> {
 fn debian_postinst_makes_the_state_dir_0700() {
     let body = read("packaging/debian/postinst");
     assert!(
-        code_lines(&body)
-            .iter()
-            .any(|l| *l == "chmod 700 /var/lib/visage"),
+        code_lines(&body).contains(&"chmod 700 /var/lib/visage"),
         "packaging/debian/postinst must `chmod 700 /var/lib/visage`"
     );
 }
@@ -62,9 +60,7 @@ fn aur_package_makes_the_state_dir_itself_0700() {
     let body = read("packaging/aur/PKGBUILD");
     // The state directory must be named as the target, not only as a parent.
     assert!(
-        code_lines(&body)
-            .iter()
-            .any(|l| *l == "install -dm700 \"$pkgdir/var/lib/visage\""),
+        code_lines(&body).contains(&"install -dm700 \"$pkgdir/var/lib/visage\""),
         "packaging/aur/PKGBUILD must `install -dm700 \"$pkgdir/var/lib/visage\"` on its own \
          line; `install -dm700 .../visage/models` leaves /var/lib/visage 0755"
     );
@@ -108,7 +104,5 @@ fn the_shared_unit_asks_systemd_for_a_0700_state_dir() {
 #[test]
 fn the_aur_check_rejects_the_models_only_line() {
     let buggy = "install -dm700 \"$pkgdir/var/lib/visage/models\"\n";
-    assert!(!code_lines(buggy)
-        .iter()
-        .any(|l| *l == "install -dm700 \"$pkgdir/var/lib/visage\""));
+    assert!(!code_lines(buggy).contains(&"install -dm700 \"$pkgdir/var/lib/visage\""));
 }
