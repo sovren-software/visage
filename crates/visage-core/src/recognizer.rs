@@ -1,14 +1,12 @@
-//! ArcFace face recognizer via ONNX Runtime.
+//! ArcFace face recognizer, run through [`crate::inference`].
 //!
 //! Extracts 512-dimensional face embeddings from aligned face crops,
 //! using the w600k_r50 ArcFace model.
 
 use crate::alignment;
-use crate::inference::InferenceOptions;
+use crate::inference::{Device, InferenceError, InferenceOptions, Model};
 use crate::types::{BoundingBox, Embedding};
 use ndarray::Array4;
-use ort::session::Session;
-use ort::value::TensorRef;
 use std::path::Path;
 use thiserror::Error;
 
@@ -27,13 +25,13 @@ pub enum RecognizerError {
     InferenceFailed(String),
     #[error("face has no landmarks — detector must return landmarks for alignment")]
     NoLandmarks,
-    #[error("ort: {0}")]
-    Ort(#[from] ort::Error),
+    #[error(transparent)]
+    Inference(#[from] InferenceError),
 }
 
 /// ArcFace-based face recognizer.
 pub struct FaceRecognizer {
-    session: Session,
+    model: Model,
 }
 
 impl FaceRecognizer {
@@ -43,18 +41,25 @@ impl FaceRecognizer {
             return Err(RecognizerError::ModelNotFound(model_path.to_string()));
         }
 
-        let session = Session::builder()?
-            .with_intra_threads(options.cpu_threads.max(1))?
-            .commit_from_file(model_path)?;
+        let model = Model::load(
+            model_path,
+            [1, 3, ARCFACE_INPUT_SIZE, ARCFACE_INPUT_SIZE],
+            options,
+        )?;
 
         tracing::info!(
             path = model_path,
-            inputs = ?session.inputs().iter().map(|i| (i.name(), i.dtype())).collect::<Vec<_>>(),
-            outputs = ?session.outputs().iter().map(|o| o.name()).collect::<Vec<_>>(),
+            device = ?model.device(),
+            outputs = ?model.output_names(),
             "loaded ArcFace model"
         );
 
-        Ok(Self { session })
+        Ok(Self { model })
+    }
+
+    /// Where the model runs.
+    pub fn device(&self) -> Device {
+        self.model.device()
     }
 
     /// Extract a face embedding from a detected face in a grayscale frame.
@@ -80,15 +85,9 @@ impl FaceRecognizer {
         let input = Self::preprocess(&aligned);
 
         // Run inference
-        let outputs = self
-            .session
-            .run(ort::inputs![TensorRef::from_array_view(input.view())?])?;
-
-        let (_, raw_data) = outputs[0]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| RecognizerError::InferenceFailed(format!("embedding extraction: {e}")))?;
-
-        let raw: Vec<f32> = raw_data.to_vec();
+        let raw = self.model.run(&input)?.into_iter().next().ok_or_else(|| {
+            RecognizerError::InferenceFailed("embedding extraction: no output".to_string())
+        })?;
 
         if raw.len() != ARCFACE_EMBEDDING_DIM {
             return Err(RecognizerError::InferenceFailed(format!(

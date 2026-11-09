@@ -1,13 +1,11 @@
-//! SCRFD face detector via ONNX Runtime.
+//! SCRFD face detector, run through [`crate::inference`].
 //!
 //! Implements the SCRFD (Sample and Computation Redistribution for Efficient Face
 //! Detection) model with 3-stride anchor-free decoding and NMS post-processing.
 
-use crate::inference::InferenceOptions;
+use crate::inference::{Device, InferenceError, InferenceOptions, Model};
 use crate::types::BoundingBox;
 use ndarray::Array4;
-use ort::session::Session;
-use ort::value::TensorRef;
 use std::path::Path;
 use thiserror::Error;
 
@@ -28,8 +26,8 @@ pub enum DetectorError {
     InferenceFailed(String),
     #[error("no face detected")]
     NoFaceDetected,
-    #[error("ort: {0}")]
-    Ort(#[from] ort::Error),
+    #[error(transparent)]
+    Inference(#[from] InferenceError),
 }
 
 /// Metadata for coordinate de-mapping after letterbox resize.
@@ -44,7 +42,7 @@ type StrideOutputIndices = (usize, usize, usize);
 
 /// SCRFD-based face detector.
 pub struct FaceDetector {
-    session: Session,
+    model: Model,
     input_height: usize,
     input_width: usize,
     /// Per-stride output indices [(score, bbox, kps)] for strides [8, 16, 32].
@@ -59,20 +57,18 @@ impl FaceDetector {
             return Err(DetectorError::ModelNotFound(model_path.to_string()));
         }
 
-        let session = Session::builder()?
-            .with_intra_threads(options.cpu_threads.max(1))?
-            .commit_from_file(model_path)?;
+        let model = Model::load(
+            model_path,
+            [1, 3, SCRFD_INPUT_SIZE, SCRFD_INPUT_SIZE],
+            options,
+        )?;
 
-        let output_names: Vec<String> = session
-            .outputs()
-            .iter()
-            .map(|o| o.name().to_string())
-            .collect();
+        let output_names = model.output_names().to_vec();
         let num_outputs = output_names.len();
 
         tracing::info!(
             path = model_path,
-            inputs = ?session.inputs().iter().map(|i| (i.name(), i.dtype())).collect::<Vec<_>>(),
+            device = ?model.device(),
             outputs = ?output_names,
             "loaded SCRFD model"
         );
@@ -91,11 +87,16 @@ impl FaceDetector {
         tracing::debug!(?stride_indices, "SCRFD output tensor mapping");
 
         Ok(Self {
-            session,
+            model,
             input_height: SCRFD_INPUT_SIZE,
             input_width: SCRFD_INPUT_SIZE,
             stride_indices,
         })
+    }
+
+    /// Where the model runs.
+    pub fn device(&self) -> Device {
+        self.model.device()
     }
 
     /// Detect faces in a grayscale frame, returning bounding boxes sorted by confidence.
@@ -107,26 +108,21 @@ impl FaceDetector {
     ) -> Result<Vec<BoundingBox>, DetectorError> {
         let (input, letterbox) = self.preprocess(frame, width as usize, height as usize);
 
-        let outputs = self
-            .session
-            .run(ort::inputs![TensorRef::from_array_view(input.view())?])?;
+        let outputs = self.model.run(&input)?;
+        let output = |idx: usize, what: &str, stride: usize| {
+            outputs.get(idx).map(Vec::as_slice).ok_or_else(|| {
+                DetectorError::InferenceFailed(format!("{what} stride {stride}: no output {idx}"))
+            })
+        };
 
         let mut all_detections = Vec::new();
 
         for (stride_pos, &stride) in SCRFD_STRIDES.iter().enumerate() {
             let (score_idx, bbox_idx, kps_idx) = self.stride_indices[stride_pos];
 
-            let (_, scores) = outputs[score_idx]
-                .try_extract_tensor::<f32>()
-                .map_err(|e| {
-                    DetectorError::InferenceFailed(format!("scores stride {stride}: {e}"))
-                })?;
-            let (_, bboxes) = outputs[bbox_idx].try_extract_tensor::<f32>().map_err(|e| {
-                DetectorError::InferenceFailed(format!("bboxes stride {stride}: {e}"))
-            })?;
-            let (_, kps) = outputs[kps_idx]
-                .try_extract_tensor::<f32>()
-                .map_err(|e| DetectorError::InferenceFailed(format!("kps stride {stride}: {e}")))?;
+            let scores = output(score_idx, "scores", stride)?;
+            let bboxes = output(bbox_idx, "bboxes", stride)?;
+            let kps = output(kps_idx, "kps", stride)?;
 
             let dets = decode_stride(
                 scores,

@@ -5,8 +5,16 @@ edition.workspace = true
 license.workspace = true
 description = "Visage core — face detection (SCRFD) and recognition (ArcFace) via ONNX"
 
+[features]
+# GPU inference through OpenVINO, chosen at runtime with
+# VISAGE_INFERENCE_DEVICE=gpu. The OpenVINO runtime is loaded when first used,
+# not linked, so a build with this feature still runs (on the CPU) on systems
+# without OpenVINO installed.
+openvino = ["dep:openvino"]
+
 [dependencies]
 ort = { workspace = true }
+openvino = { workspace = true, optional = true }
 ndarray = { workspace = true }
 image = { workspace = true }
 serde = { workspace = true }

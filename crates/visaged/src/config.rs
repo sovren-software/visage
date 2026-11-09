@@ -32,8 +32,9 @@ pub struct Config {
     /// Lower values are more permissive; higher values reject more aggressively.
     /// Only used when `liveness_enabled` is true.
     pub liveness_min_displacement: f32,
-    /// How the face models run: `VISAGE_CPU_THREADS` sets ONNX Runtime's
-    /// threads per model.
+    /// Where and how the face models run: `VISAGE_INFERENCE_DEVICE` (`cpu` or
+    /// `gpu`), `VISAGE_CPU_THREADS`, and `VISAGE_INFERENCE_CACHE_DIR` for
+    /// compiled GPU kernels.
     pub inference: visage_core::InferenceOptions,
     /// Whether the daemon is running on the session bus (development mode).
     /// UID validation is skipped on the session bus — all callers share the same user.
@@ -62,7 +63,6 @@ impl Config {
         Self {
             camera_device: std::env::var("VISAGE_CAMERA_DEVICE")
                 .unwrap_or_else(|_| "/dev/video2".to_string()),
-            model_dir,
             db_path,
             similarity_threshold: env_f32("VISAGE_SIMILARITY_THRESHOLD", 0.40),
             verify_timeout_secs: env_u64("VISAGE_VERIFY_TIMEOUT_SECS", 10),
@@ -81,8 +81,15 @@ impl Config {
                 .unwrap_or(true),
             liveness_min_displacement: env_f32("VISAGE_LIVENESS_MIN_DISPLACEMENT", 0.8),
             inference: visage_core::InferenceOptions {
+                device: parse_device(std::env::var("VISAGE_INFERENCE_DEVICE").ok().as_deref()),
                 cpu_threads: env_usize("VISAGE_CPU_THREADS", 2).max(1),
+                cache_dir: Some(
+                    std::env::var("VISAGE_INFERENCE_CACHE_DIR")
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|_| default_inference_cache_dir(&model_dir)),
+                ),
             },
+            model_dir,
             session_bus: parse_session_bus(std::env::var("VISAGE_SESSION_BUS").ok().as_deref()),
         }
     }
@@ -125,6 +132,28 @@ fn env_usize(key: &str, default: usize) -> usize {
         .unwrap_or(default)
 }
 
+/// Parse `VISAGE_INFERENCE_DEVICE`.
+///
+/// Unset means the CPU. An unknown value also means the CPU, with a warning:
+/// a typo in a tuning knob must never keep the daemon from starting, which
+/// would lock users out of face authentication entirely.
+fn parse_device(value: Option<&str>) -> visage_core::Device {
+    match value.map(str::parse::<visage_core::Device>) {
+        None => visage_core::Device::Cpu,
+        Some(Ok(device)) => device,
+        Some(Err(e)) => {
+            tracing::warn!(error = %e, "VISAGE_INFERENCE_DEVICE ignored, using the CPU");
+            visage_core::Device::Cpu
+        }
+    }
+}
+
+/// Compiled GPU kernels live next to the models (`/var/lib/visage/gpu-cache`
+/// for the packaged daemon), inside the state directory the service may write.
+fn default_inference_cache_dir(model_dir: &std::path::Path) -> PathBuf {
+    model_dir.parent().unwrap_or(model_dir).join("gpu-cache")
+}
+
 /// Parse the `VISAGE_SESSION_BUS` value into the session-bus flag.
 ///
 /// Security-sensitive: session-bus mode *skips* D-Bus caller-UID validation
@@ -143,7 +172,29 @@ fn parse_session_bus(value: Option<&str>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_session_bus;
+    use super::{default_inference_cache_dir, parse_device, parse_session_bus};
+    use std::path::Path;
+    use visage_core::Device;
+
+    #[test]
+    fn inference_device_defaults_to_cpu_and_never_fails_on_a_typo() {
+        assert_eq!(parse_device(None), Device::Cpu);
+        assert_eq!(parse_device(Some("gpu")), Device::Gpu);
+        assert_eq!(parse_device(Some("GPU")), Device::Gpu);
+        assert_eq!(parse_device(Some("cpu")), Device::Cpu);
+        // Unknown values fall back rather than refusing to start.
+        assert_eq!(parse_device(Some("gpuu")), Device::Cpu);
+        assert_eq!(parse_device(Some("")), Device::Cpu);
+    }
+
+    #[test]
+    fn gpu_cache_sits_beside_the_models_in_the_state_directory() {
+        // The packaged service may only write under /var/lib/visage.
+        assert_eq!(
+            default_inference_cache_dir(Path::new("/var/lib/visage/models")),
+            Path::new("/var/lib/visage/gpu-cache")
+        );
+    }
 
     #[test]
     fn session_bus_defaults_off_and_respects_zero() {

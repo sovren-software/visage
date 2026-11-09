@@ -32,6 +32,7 @@ async fn main() -> Result<()> {
         model_dir = %config.model_dir.display(),
         db_path = %config.db_path.display(),
         threshold = config.similarity_threshold,
+        inference_device = ?config.inference.device,
         cpu_threads = config.inference.cpu_threads,
         session_bus = config.session_bus,
         "configuration loaded"

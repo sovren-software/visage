@@ -69,6 +69,24 @@
 
 ### Added
 
+- **Optional GPU inference through OpenVINO (`openvino` cargo feature,
+  `VISAGE_INFERENCE_DEVICE=gpu`).** Both models run on the GPU instead of ONNX Runtime
+  on the CPU. The default build and the default setting are unchanged.
+
+  The GPU path cannot take face authentication down. OpenVINO is loaded at runtime
+  rather than linked, so a build with the feature still starts where it is not
+  installed; and if the runtime, its GPU plugin or the GPU itself is missing, or a
+  model fails to compile, loading logs a warning and falls back to the CPU.
+
+  Compiled GPU kernels are cached in `VISAGE_INFERENCE_CACHE_DIR` (default `gpu-cache`
+  beside the model directory). Without the cache every daemon start, including the
+  restart after each resume, recompiles both models, which takes seconds on an
+  integrated GPU.
+
+  The packaged unit is unchanged: GPU users add `DeviceAllow=char-drm rw` with
+  `systemctl edit visaged`, so nobody else's sandbox grows. On NixOS,
+  `services.visage.inference.device = "gpu"` sets both.
+
 - **`VISAGE_CPU_THREADS`: ONNX Runtime threads per model**, previously hard-coded to 2.
   The default is unchanged. On a 4-core, 8-thread i7-1160G7 (plugged in, balanced
   profile), 4 threads took SCRFD from about 165 to 125 ms and ArcFace from about 135 to
