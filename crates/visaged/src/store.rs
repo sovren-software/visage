@@ -1,6 +1,6 @@
+use crate::db::Connection;
 use std::path::Path;
 use thiserror::Error;
-use tokio_rusqlite::Connection;
 use visage_core::{Embedding, FaceModel};
 
 use aes_gcm::{
@@ -16,7 +16,7 @@ const EMBEDDING_BYTE_LEN: usize = EMBEDDING_DIM * 4;
 #[derive(Error, Debug)]
 pub enum StoreError {
     #[error("database error: {0}")]
-    Db(#[from] tokio_rusqlite::Error),
+    Db(#[from] crate::db::DbError),
     #[error("rusqlite error: {0}")]
     Rusqlite(#[from] rusqlite::Error),
     #[error("embedding encryption failed")]
@@ -215,9 +215,11 @@ impl FaceModelStore {
     pub async fn count_all(&self) -> Result<u64, StoreError> {
         self.conn
             .call(|conn| {
-                let count: u64 =
+                // rusqlite 0.38 made `u64: FromSql` opt-in (`fallible_uint`).
+                // SQLite stores integers as i64, and COUNT(*) is never negative.
+                let count: i64 =
                     conn.query_row("SELECT COUNT(*) FROM faces", [], |row| row.get(0))?;
-                Ok(count)
+                u64::try_from(count).map_err(|_| rusqlite::Error::IntegralValueOutOfRange(0, count))
             })
             .await
             .map_err(StoreError::from)
@@ -528,7 +530,7 @@ mod tests {
     async fn test_wrong_key_fails() {
         // Encrypt with one key, try to decrypt with another — must fail
         let store1 = FaceModelStore {
-            conn: tokio_rusqlite::Connection::open(Path::new(":memory:"))
+            conn: crate::db::Connection::open(Path::new(":memory:"))
                 .await
                 .unwrap(),
             enc_key: [1u8; 32],
@@ -590,7 +592,7 @@ mod tests {
     #[tokio::test]
     async fn test_encrypted_blob_format_and_authentication() {
         let store = FaceModelStore {
-            conn: tokio_rusqlite::Connection::open(Path::new(":memory:"))
+            conn: crate::db::Connection::open(Path::new(":memory:"))
                 .await
                 .unwrap(),
             enc_key: [7u8; 32],
