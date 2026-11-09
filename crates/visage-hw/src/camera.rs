@@ -1,6 +1,7 @@
 //! V4L2 camera capture via the `v4l` crate.
 
 use crate::frame::{self, Frame};
+use std::ops::ControlFlow;
 use std::path::Path;
 use thiserror::Error;
 use v4l::buffer::Type as BufType;
@@ -65,6 +66,19 @@ enum Budget {
     Frames(usize),
     /// Stop at this instant, however many frames arrived.
     Until(std::time::Instant),
+    /// Stop only when the observer says so.
+    Open,
+}
+
+/// Adapt an observer that never stops the loop to the loop's signature.
+fn continue_after<F>(mut observe: F) -> impl FnMut(&Frame) -> ControlFlow<()>
+where
+    F: FnMut(&Frame),
+{
+    move |frame| {
+        observe(frame);
+        ControlFlow::Continue(())
+    }
 }
 
 impl Camera {
@@ -309,7 +323,7 @@ impl Camera {
     where
         F: FnMut(&Frame),
     {
-        self.capture_inner(Budget::Frames(count), true, true, observe)
+        self.capture_inner(Budget::Frames(count), true, true, continue_after(observe))
     }
 
     /// Stream frames to `observe` for up to `budget`, retaining none of them.
@@ -345,9 +359,31 @@ impl Camera {
             Budget::Until(std::time::Instant::now() + budget),
             false,
             true,
-            observe,
+            continue_after(observe),
         )
         .map(|(_, dark)| dark)
+    }
+
+    /// Stream frames to `on_frame` until it returns [`ControlFlow::Break`].
+    ///
+    /// For callers that decide frame by frame, like verification: it can stop
+    /// at the first frame that settles the question instead of waiting for a
+    /// fixed count, and it can keep looking without paying for a new stream.
+    /// Starting a stream is the expensive part of a capture on UVC IR modules:
+    /// measured at ~320 ms from `STREAMON` to the first frame on a Syntek
+    /// 174f:118f, against ~35 ms between frames once it runs.
+    ///
+    /// Every frame is delivered, dark ones included (`is_dark` set, no CLAHE),
+    /// so the caller can bound its own attempts. Lit frames get CLAHE as in
+    /// [`Camera::capture_frames`]. Nothing is retained.
+    ///
+    /// The caller must eventually break: there is no frame or time limit here.
+    pub fn stream_frames<F>(&self, on_frame: F) -> Result<(), CameraError>
+    where
+        F: FnMut(&Frame) -> ControlFlow<()>,
+    {
+        self.capture_inner(Budget::Open, false, true, on_frame)
+            .map(|_| ())
     }
 
     /// Stream frames for `budget` with **no CLAHE**, retaining none of them.
@@ -376,13 +412,16 @@ impl Camera {
             Budget::Until(std::time::Instant::now() + budget),
             false,
             false,
-            observe,
+            continue_after(observe),
         )
         .map(|(_, dark)| dark)
     }
 
     /// The one capture loop. Every public entry point above funnels through it,
     /// so the authentication path and the enrollment path cannot diverge.
+    ///
+    /// `observe` sees every frame and may end the loop early by returning
+    /// [`ControlFlow::Break`]; the counted and timed entry points never do.
     fn capture_inner<F>(
         &self,
         budget: Budget,
@@ -391,12 +430,12 @@ impl Camera {
         mut observe: F,
     ) -> Result<(Vec<Frame>, usize), CameraError>
     where
-        F: FnMut(&Frame),
+        F: FnMut(&Frame) -> ControlFlow<()>,
     {
         self.reassert_format()?;
         let wanted = match budget {
             Budget::Frames(n) => n,
-            Budget::Until(_) => 0,
+            Budget::Until(_) | Budget::Open => 0,
         };
         let max_attempts = wanted.saturating_mul(3);
         let mut good_frames = if keep {
@@ -425,6 +464,7 @@ impl Camera {
                         break;
                     }
                 }
+                Budget::Open => {}
             }
             attempts += 1;
 
@@ -439,7 +479,7 @@ impl Camera {
                 tracing::debug!(seq = meta.sequence, "skipping dark frame");
                 // Surface it anyway: "too dark" is the most useful thing the
                 // user can be told, and it is only knowable here.
-                observe(&Frame {
+                let flow = observe(&Frame {
                     data: gray,
                     width: self.width,
                     height: self.height,
@@ -447,6 +487,9 @@ impl Camera {
                     sequence: meta.sequence,
                     is_dark: true,
                 });
+                if flow.is_break() {
+                    break;
+                }
                 continue;
             }
 
@@ -469,10 +512,13 @@ impl Camera {
                 sequence: meta.sequence,
                 is_dark: false,
             };
-            observe(&frame);
+            let flow = observe(&frame);
             good += 1;
             if keep {
                 good_frames.push(frame);
+            }
+            if flow.is_break() {
+                break;
             }
         }
 

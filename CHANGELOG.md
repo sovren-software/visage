@@ -43,6 +43,18 @@
   table, `PERMANENT_ERRORS`, and `pam_retry_contract.rs` fails CI if visaged stops
   producing any of them, so a reworded message cannot turn a lockout into a retry loop.
 
+- **A verify examines frames as they arrive, on one camera stream.** It used to capture
+  a whole burst before examining any of it. It now streams frames and examines each
+  one as it arrives, so it can stop at the frame that settles it: with the change
+  below, a match with liveness off ends the verify on its first matching frame. The
+  verify reads at most what a burst did (`frames_per_verify` usable frames, or three
+  times that many attempts when frames come out dark), and its outcomes are the
+  burst's: no face, no usable frames (still counted toward the camera self-heal),
+  matched, not matched, and the liveness gate over every frame. On a ThinkPad X12
+  Detachable Gen 1 (Syntek `174f:118f`), capture for a verify in view went from
+  ~363 to ~296 ms. `Camera::stream_frames` is the new entry point; the capture loop's
+  observer may now end it early, and the counted and timed entry points are unchanged.
+
 - **A successful verify no longer runs ArcFace on frames after the first match.** The
   outcome is a match if any frame matches, so once one has, the remaining frames'
   extractions can only change the reported similarity, never the decision. That was
