@@ -150,7 +150,7 @@ impl FaceModelStore {
                         row.get::<_, String>(5)?,
                     ))
                 })?;
-                Ok(rows.collect::<Result<Vec<_>, _>>()?)
+                rows.collect::<Result<Vec<_>, _>>()
             })
             .await?;
 
@@ -189,7 +189,7 @@ impl FaceModelStore {
                         created_at: row.get(4)?,
                     })
                 })?;
-                Ok(rows.collect::<Result<Vec<_>, _>>()?)
+                rows.collect::<Result<Vec<_>, _>>()
             })
             .await
             .map_err(StoreError::from)
