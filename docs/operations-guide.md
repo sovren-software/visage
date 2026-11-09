@@ -240,9 +240,20 @@ Face auth is automatically active after installation. When you run a command req
 3. On match: proceeds immediately
 4. On no-match or timeout (~3s): falls through to your password prompt
 
-The PAM module enforces a 3-second D-Bus method timeout to avoid login hangs. The daemon's
-internal verify timeout (default 10s) is controlled by `VISAGE_VERIFY_TIMEOUT_SECS` and is
-used by non-PAM clients such as the CLI.
+The PAM module's `timeout=N` argument (default 3) is the **total** budget for face auth on
+one attempt, not a single call. Within it, `pam_visage` retries transient failures — no face
+in frame, dark frames, the daemon restarting after resume — every 200 ms, and a face that
+was seen but did not match once more after 1.5 s. A lockout, a missing enrollment, an
+unknown user or a refused caller ends the attempt at once. Every path that does not match
+falls through to the password.
+
+⚠️ Because transient failures are retried, a **stopped** daemon now costs the full
+`timeout=N` on every authentication, where it used to fail at once. If you disable
+`visaged`, remove the `pam_visage.so` line too.
+
+On a GDM lock screen right after resume, `timeout=6` gives a restarting daemon room to
+answer (see #123). The daemon's internal verify timeout (default 10s) is controlled by
+`VISAGE_VERIFY_TIMEOUT_SECS` and is used by non-PAM clients such as the CLI.
 
 No extra steps required. The PAM module is configured system-wide via `pam-auth-update`.
 
