@@ -432,6 +432,11 @@ The first start compiles GPU kernels for both models, which takes several second
 integrated GPU, and caches them in `VISAGE_INFERENCE_CACHE_DIR`. Later starts, including
 the restart after every resume, load them from the cache.
 
+⚠️ OpenVINO loads those cached kernels without checking them against the pinned model
+hashes, so whoever can write the cache directory can change what the GPU runs. The default
+sits inside the root-only `/var/lib/visage`. If you set `VISAGE_INFERENCE_CACHE_DIR`, point
+it at a directory only root can write.
+
 Without a GPU, raising `VISAGE_CPU_THREADS` is the cheaper speed-up.
 
 ## GNOME: keyring and the login screen

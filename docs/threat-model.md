@@ -154,3 +154,10 @@ require structured journal fields (sd_journal_send) rather than plain syslog —
    to 0.8 px. Cameras with very low frame rates or high sensor noise may require adjustment.
    Setting `VISAGE_LIVENESS_ENABLED=0` disables the check entirely — this is intentional
    for development but should not be used in production.
+
+5. **The GPU kernel cache is outside model integrity.** With the optional `openvino` build
+   and `VISAGE_INFERENCE_DEVICE=gpu`, OpenVINO compiles the SHA-256-verified ONNX files
+   into kernels and caches them in `VISAGE_INFERENCE_CACHE_DIR`, then loads the cache on
+   later starts without checking it. Anyone who can write that directory can change what
+   runs. The default (`/var/lib/visage/gpu-cache`) is root-only, so this needs root
+   already; a custom cache directory must keep that property. The CPU path is unaffected.
