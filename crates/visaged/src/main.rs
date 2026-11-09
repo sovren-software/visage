@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use tracing_subscriber::EnvFilter;
 
 mod config;
+mod db;
 mod dbus_interface;
 mod engine;
 mod rate_limiter;

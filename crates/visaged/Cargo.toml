@@ -22,7 +22,6 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 rusqlite = { workspace = true }
-tokio-rusqlite = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 aes-gcm = { workspace = true }

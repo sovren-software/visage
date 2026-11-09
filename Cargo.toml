@@ -21,7 +21,12 @@ repository = "https://github.com/sovren-software/visage"
 # not stale — it was false. The crate could not build on it, and anyone who
 # trusted the field got a failure deep inside a dependency instead of a clear
 # "your toolchain is too old". The `msrv` CI job now verifies this.
-rust-version = "1.88"
+#
+# Raised to 1.89 on 2026-11-09: `rusqlite` 0.41.0 and 0.41.1 both declare 1.89
+# in their manifests (read with `cargo info`), although the 0.41.0 release note
+# says "Lower MSRV to 1.88.0". 0.41 is the only line that carries the
+# bundled-SQLite fix for RUSTSEC-2026-0459.
+rust-version = "1.89"
 
 [workspace.dependencies]
 # Terminal UI. `ratatui` re-exports the `crossterm` it was built against, so
@@ -59,8 +64,7 @@ thiserror = "2"
 anyhow = "1"
 
 # Storage
-rusqlite = { version = "0.32", features = ["bundled"] }
-tokio-rusqlite = "0.6"
+rusqlite = { version = "0.41", features = ["bundled"] }
 
 # Identity / time
 uuid = { version = "1", features = ["v4"] }

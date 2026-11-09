@@ -12,9 +12,23 @@
   at build time. The daemon has no network access, so none of these were reachable from
   `visaged`. The scheduled Security Audit had failed every week since 2026-10-19.
 
-  ⚠️ One advisory remains: RUSTSEC-2026-0459 in the bundled SQLite of `libsqlite3-sys`
-  0.30.1. Its fix needs `rusqlite` 0.41, and `tokio-rusqlite` does not yet support that
-  version, so it lands separately.
+- **RUSTSEC-2026-0459 — bundled SQLite 3.54.1 via `rusqlite` 0.32 → 0.41.**
+  `libsqlite3-sys` 0.30.1 bundled a SQLite that can return uninitialized page-cache memory
+  when it opens a database together with a crafted `-wal` file. Exposure here was low:
+  `faces.db` lives in a root-only directory, and the attack needs a less trusted party to
+  write both files. The fix ships only with `rusqlite` 0.41.
+
+  `tokio-rusqlite` 0.8 pins `rusqlite` ^0.40, so it is **removed**. A 60-line handle in
+  `visaged/src/db.rs` takes its place and keeps its three properties: calls are serialised,
+  the async executor never blocks, and a panic fails closed for every later call. Tests
+  cover each property. `count_all` now reads `COUNT(*)` as `i64`, because `rusqlite` 0.38
+  made `u64: FromSql` opt-in.
+
+### Changed
+
+- **MSRV 1.88 → 1.89.** `rusqlite` 0.41.0 and 0.41.1 both declare 1.89 in their manifests,
+  although the 0.41.0 release note says it lowered the MSRV to 1.88. The `msrv` CI job
+  checks the new value.
 
 ### Added
 
