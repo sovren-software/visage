@@ -1,3 +1,4 @@
+use std::ops::ControlFlow;
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use visage_core::{
@@ -611,6 +612,168 @@ fn frame_work(matched: bool, liveness_enabled: bool) -> FrameWork {
     }
 }
 
+/// What one frame showed, as far as the verify decision is concerned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FrameSeen {
+    /// Too dark to use.
+    Dark,
+    /// Usable, but no face in it.
+    NoFace,
+    /// A face. `matched` is whether any frame of the verify has matched the
+    /// gallery so far.
+    Face { matched: bool },
+}
+
+/// What the verify loop does after a frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Step {
+    /// Read the next frame.
+    Continue,
+    /// The verify has its answer, matched or not.
+    Decide,
+    /// The frames ran out without a face.
+    NoFace,
+    /// The frames ran out and every one was dark.
+    NoUsableFrames,
+}
+
+/// Counts a verify's frames the way a capture burst does.
+///
+/// A verify reads `frames_per_verify` usable frames, or three times that many
+/// attempts when frames come out dark: the bounds of
+/// [`Camera::capture_frames`], which the verify used before. The difference is
+/// that each frame is examined as it arrives, on one stream, so the verify can
+/// stop as soon as its answer is known instead of waiting for the burst.
+///
+/// The outcomes are the burst's:
+/// - Once the frames are used up, a verify that saw a face decides, matched or
+///   not.
+/// - One that saw no face fails with [`Step::NoFace`], or with
+///   [`Step::NoUsableFrames`] when every frame was dark (which the engine
+///   treats as a broken camera).
+/// - A match with liveness off decides at once: nothing else can change the
+///   outcome (see [`frame_work`]). With liveness on the verify reads all its
+///   frames, because the landmark check needs every one.
+struct FrameBudget {
+    frames_per_verify: usize,
+    liveness_enabled: bool,
+    usable: usize,
+    attempts: usize,
+    face_seen: bool,
+    matched: bool,
+}
+
+impl FrameBudget {
+    /// `frames_per_verify` must be at least 1; `run_verify` handles 0.
+    fn new(frames_per_verify: usize, liveness_enabled: bool) -> Self {
+        Self {
+            frames_per_verify,
+            liveness_enabled,
+            usable: 0,
+            attempts: 0,
+            face_seen: false,
+            matched: false,
+        }
+    }
+
+    /// How much of the next usable frame the verify still needs.
+    fn work(&self) -> FrameWork {
+        frame_work(self.matched, self.liveness_enabled)
+    }
+
+    fn record(&mut self, seen: FrameSeen) -> Step {
+        self.attempts += 1;
+        match seen {
+            FrameSeen::Dark => {}
+            FrameSeen::NoFace => self.usable += 1,
+            FrameSeen::Face { matched } => {
+                self.usable += 1;
+                self.face_seen = true;
+                self.matched |= matched;
+            }
+        }
+
+        if self.matched && !self.liveness_enabled {
+            return Step::Decide;
+        }
+        let used_up = self.usable >= self.frames_per_verify
+            || self.attempts >= self.frames_per_verify.saturating_mul(3);
+        if !used_up {
+            Step::Continue
+        } else if self.face_seen {
+            Step::Decide
+        } else if self.usable == 0 {
+            Step::NoUsableFrames
+        } else {
+            Step::NoFace
+        }
+    }
+}
+
+/// What the verify's frames added up to.
+#[derive(Default)]
+struct Evidence {
+    best: Option<MatchResult>,
+    best_quality: f32,
+    landmark_sequence: Vec<[(f32, f32); 5]>,
+}
+
+impl Evidence {
+    fn matched(&self) -> bool {
+        self.best.as_ref().is_some_and(|r| r.matched)
+    }
+}
+
+/// Detect, and when `work` asks for it extract and compare, one usable frame.
+#[allow(clippy::too_many_arguments)]
+fn examine_frame(
+    frame: &visage_hw::Frame,
+    work: FrameWork,
+    detector: &mut visage_core::FaceDetector,
+    recognizer: &mut visage_core::FaceRecognizer,
+    gallery: &[FaceModel],
+    threshold: f32,
+    evidence: &mut Evidence,
+    timing: &mut VerifyTiming,
+) -> Result<FrameSeen, EngineError> {
+    let t_detect = std::time::Instant::now();
+    let faces = detector.detect(&frame.data, frame.width, frame.height)?;
+    timing.detect += t_detect.elapsed();
+    timing.detect_n += 1;
+    let Some(face) = faces.first() else {
+        return Ok(FrameSeen::NoFace);
+    };
+
+    // Collect landmarks for liveness check
+    if let Some(landmarks) = face.landmarks {
+        evidence.landmark_sequence.push(landmarks);
+    }
+
+    if work == FrameWork::Full {
+        let t_extract = std::time::Instant::now();
+        let embedding = recognizer.extract(&frame.data, frame.width, frame.height, face)?;
+        timing.extract += t_extract.elapsed();
+        timing.extract_n += 1;
+        let result = CosineMatcher.compare(&embedding, gallery, threshold);
+
+        let is_better = evidence
+            .best
+            .as_ref()
+            .is_none_or(|prev| result.similarity > prev.similarity);
+        if is_better {
+            evidence.best_quality = face.confidence;
+            evidence.best = Some(result);
+        }
+    }
+
+    Ok(FrameSeen::Face {
+        matched: evidence.matched(),
+    })
+}
+
+/// Stream frames, examining each as it arrives, until [`FrameBudget`] has an
+/// answer; then apply the liveness gate.
+///
 /// When `liveness_enabled` is true, collects eye landmarks across all frames
 /// and runs a passive stability check before accepting a match. Static images
 /// (photographs) produce near-identical landmarks and are rejected.
@@ -632,83 +795,69 @@ fn run_verify(
     if std::time::Instant::now() > deadline {
         return Err(EngineError::VerifyTimeout);
     }
-
-    activate_emitter(emitter);
-    let t_capture = std::time::Instant::now();
-    let capture_result = camera.capture_frames(frames_count);
-    timing.capture = t_capture.elapsed();
-    deactivate_emitter(emitter);
-
-    if std::time::Instant::now() > deadline {
-        return Err(EngineError::VerifyTimeout);
-    }
-
-    let (frames, dark_skipped) = capture_result?;
-    timing.frames = frames.len();
-    timing.dark_skipped = dark_skipped;
-    tracing::debug!(
-        captured = frames.len(),
-        dark_skipped,
-        "verify: captured frames"
-    );
-
-    if frames.is_empty() {
+    // A burst of zero frames captured nothing; an open stream would read one.
+    if frames_count == 0 {
         return Err(EngineError::NoUsableFrames);
     }
 
-    let matcher = CosineMatcher;
-    let mut best_result: Option<MatchResult> = None;
-    let mut best_quality = 0.0f32;
-    let mut any_face_detected = false;
-    let mut landmark_sequence: Vec<[(f32, f32); 5]> = Vec::new();
+    let mut budget = FrameBudget::new(frames_count, liveness_enabled);
+    let mut evidence = Evidence::default();
+    let mut outcome: Option<Result<(), EngineError>> = None;
 
-    for frame in &frames {
-        let matched = best_result.as_ref().is_some_and(|r| r.matched);
-        let work = frame_work(matched, liveness_enabled);
-        if work == FrameWork::None {
-            break;
+    activate_emitter(emitter);
+    let t_stream = std::time::Instant::now();
+    let streamed = camera.stream_frames(|frame| {
+        if std::time::Instant::now() > deadline {
+            outcome = Some(Err(EngineError::VerifyTimeout));
+            return ControlFlow::Break(());
         }
 
-        let t_detect = std::time::Instant::now();
-        let faces = detector.detect(&frame.data, frame.width, frame.height)?;
-        timing.detect += t_detect.elapsed();
-        timing.detect_n += 1;
-        let Some(face) = faces.first() else {
-            continue;
+        let seen = if frame.is_dark {
+            timing.dark_skipped += 1;
+            FrameSeen::Dark
+        } else {
+            timing.frames += 1;
+            match examine_frame(
+                frame,
+                budget.work(),
+                detector,
+                recognizer,
+                gallery,
+                threshold,
+                &mut evidence,
+                &mut timing,
+            ) {
+                Ok(seen) => seen,
+                Err(e) => {
+                    outcome = Some(Err(e));
+                    return ControlFlow::Break(());
+                }
+            }
         };
-        any_face_detected = true;
 
-        // Collect landmarks for liveness check
-        if let Some(landmarks) = face.landmarks {
-            landmark_sequence.push(landmarks);
-        }
-
-        if work == FrameWork::LandmarksOnly {
-            continue;
-        }
-
-        let t_extract = std::time::Instant::now();
-        let embedding = recognizer.extract(&frame.data, frame.width, frame.height, face)?;
-        timing.extract += t_extract.elapsed();
-        timing.extract_n += 1;
-        let result = matcher.compare(&embedding, gallery, threshold);
-
-        let is_better = match &best_result {
-            None => true,
-            Some(prev) => result.similarity > prev.similarity,
+        outcome = match budget.record(seen) {
+            Step::Continue => return ControlFlow::Continue(()),
+            Step::Decide => Some(Ok(())),
+            Step::NoFace => Some(Err(EngineError::NoFaceDetected)),
+            Step::NoUsableFrames => Some(Err(EngineError::NoUsableFrames)),
         };
-        if is_better {
-            best_quality = face.confidence;
-            best_result = Some(result);
-        }
-    }
+        ControlFlow::Break(())
+    });
+    deactivate_emitter(emitter);
+    // Frames are examined as they arrive, so the stream's wall time includes
+    // the inference; capture is what is left.
+    timing.capture = unaccounted(t_stream.elapsed(), &[timing.detect, timing.extract]);
 
-    if !any_face_detected {
-        return Err(EngineError::NoFaceDetected);
-    }
+    streamed?;
+    tracing::debug!(
+        usable = timing.frames,
+        dark_skipped = timing.dark_skipped,
+        "verify: streamed frames"
+    );
+    // The stream only ends through the closure, which always records why.
+    outcome.unwrap_or(Err(EngineError::NoUsableFrames))?;
 
-    // If no match result at all, return a non-match
-    let result = best_result.unwrap_or(MatchResult {
+    let result = evidence.best.unwrap_or(MatchResult {
         matched: false,
         similarity: 0.0,
         model_id: None,
@@ -716,14 +865,13 @@ fn run_verify(
     });
 
     // --- Passive liveness check ---
-    // Run after detection loop so we always have full landmark data.
     // Only gates the result when a match would otherwise succeed. The check
     // fails closed: fewer than 2 landmark frames yields `is_live = false`
     // (rejected), so a spoof that produces only a single detectable landmark
     // frame cannot slip past liveness by starving it of evidence.
     if liveness_enabled && result.matched {
         let liveness =
-            check_landmark_stability(&landmark_sequence, Some(liveness_min_displacement));
+            check_landmark_stability(&evidence.landmark_sequence, Some(liveness_min_displacement));
 
         tracing::debug!(
             is_live = liveness.is_live,
@@ -748,7 +896,7 @@ fn run_verify(
 
     Ok(VerifyResult {
         result,
-        best_quality,
+        best_quality: evidence.best_quality,
     })
 }
 
@@ -828,6 +976,66 @@ mod tests {
         assert_eq!(frame_work(true, true), FrameWork::LandmarksOnly);
         // Matched with liveness off: nothing reads the remaining frames.
         assert_eq!(frame_work(true, false), FrameWork::None);
+    }
+
+    /// A match with liveness off decides on that frame: the remaining frames
+    /// cannot change the outcome.
+    #[test]
+    fn a_match_without_liveness_decides_at_once() {
+        let mut b = FrameBudget::new(3, false);
+        assert_eq!(b.record(FrameSeen::NoFace), Step::Continue);
+        assert_eq!(b.record(FrameSeen::Face { matched: true }), Step::Decide);
+    }
+
+    /// With liveness on, the landmark check needs every frame, so a match
+    /// keeps the verify reading, detection only, to the end of its frames.
+    #[test]
+    fn a_match_with_liveness_reads_all_its_frames() {
+        let mut b = FrameBudget::new(3, true);
+        assert_eq!(b.record(FrameSeen::Face { matched: true }), Step::Continue);
+        assert_eq!(b.work(), FrameWork::LandmarksOnly);
+        assert_eq!(b.record(FrameSeen::Face { matched: true }), Step::Continue);
+        assert_eq!(b.record(FrameSeen::NoFace), Step::Decide);
+    }
+
+    /// A face that was seen and rejected decides once the frames are used up,
+    /// as it did after a burst: a later frame may still match.
+    #[test]
+    fn a_rejected_face_decides_when_the_frames_run_out() {
+        let mut b = FrameBudget::new(3, false);
+        assert_eq!(b.record(FrameSeen::Face { matched: false }), Step::Continue);
+        assert_eq!(b.work(), FrameWork::Full);
+        assert_eq!(b.record(FrameSeen::NoFace), Step::Continue);
+        assert_eq!(b.record(FrameSeen::NoFace), Step::Decide);
+    }
+
+    #[test]
+    fn no_face_in_any_frame_fails_as_no_face() {
+        let mut b = FrameBudget::new(3, false);
+        assert_eq!(b.record(FrameSeen::NoFace), Step::Continue);
+        assert_eq!(b.record(FrameSeen::NoFace), Step::Continue);
+        assert_eq!(b.record(FrameSeen::NoFace), Step::NoFace);
+    }
+
+    /// Dark frames count as attempts, bounded at three per wanted frame, the
+    /// same budget `Camera::capture_frames` has. Only a verify in which every
+    /// frame was dark reports no usable frames, which the engine treats as a
+    /// broken camera.
+    #[test]
+    fn dark_frames_are_bounded_like_a_capture_burst() {
+        let mut b = FrameBudget::new(3, false);
+        for _ in 0..8 {
+            assert_eq!(b.record(FrameSeen::Dark), Step::Continue);
+        }
+        assert_eq!(b.record(FrameSeen::Dark), Step::NoUsableFrames);
+
+        let mut b = FrameBudget::new(3, false);
+        for _ in 0..7 {
+            assert_eq!(b.record(FrameSeen::Dark), Step::Continue);
+        }
+        assert_eq!(b.record(FrameSeen::NoFace), Step::Continue);
+        // Ninth attempt: usable frames, but no face.
+        assert_eq!(b.record(FrameSeen::NoFace), Step::NoFace);
     }
 }
 
