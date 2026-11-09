@@ -107,8 +107,17 @@ pub fn run(model_dir: Option<String>) -> Result<()> {
 
     println!("Model directory: {}", dir.display());
 
-    fs::create_dir_all(&dir)
-        .with_context(|| format!("failed to create directory {}", dir.display()))?;
+    // Root-only, like the daemon's state directory it usually sits in: on a
+    // fresh RPM or source install `visage setup` can be the first thing to
+    // create /var/lib/visage, and a 0755 directory there stays 0755.
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&dir)
+            .with_context(|| format!("failed to create directory {}", dir.display()))?;
+    }
 
     let mut downloaded = 0;
     let mut skipped = 0;

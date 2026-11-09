@@ -62,7 +62,10 @@ package() {
     install -Dm644 packaging/systemd/visage-resume.service \
         "$pkgdir/usr/lib/systemd/system/visage-resume.service"
 
-    # State directory (empty — models downloaded at runtime via `visage setup`)
+    # State directory (empty — models downloaded at runtime via `visage setup`).
+    # Both lines are needed: `install -dm700 a/b` makes only `b` 0700 and
+    # creates `a` 0755, which left faces.db readable by every local user.
+    install -dm700 "$pkgdir/var/lib/visage"
     install -dm700 "$pkgdir/var/lib/visage/models"
 
     # License and docs

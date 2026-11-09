@@ -34,6 +34,8 @@ post_install() {
 }
 
 post_upgrade() {
+    # Packages up to 0.4.0 shipped /var/lib/visage as 0755.
+    chmod 700 /var/lib/visage 2>/dev/null || true
     systemctl daemon-reload || true
     systemctl restart visaged.service 2>/dev/null || true
 

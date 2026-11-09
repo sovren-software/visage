@@ -56,7 +56,7 @@ assets = [
 name = "visage"
 auto-req = "no"
 requires = { pam = "*", dbus = "*", systemd = "*" }
-post_install_script = "systemctl daemon-reload >/dev/null 2>&1 || :"
+post_install_script = "install -d -m 0700 /var/lib/visage && chmod 0700 /var/lib/visage; systemctl daemon-reload >/dev/null 2>&1 || :"
 post_uninstall_script = "systemctl daemon-reload >/dev/null 2>&1 || :"
 assets = [
   { source = "target/release/visaged", dest = "/usr/bin/visaged", mode = "755" },
