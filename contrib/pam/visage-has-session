@@ -10,7 +10,10 @@
 # Then see README.md in this directory for the PAM lines.
 [ -n "$PAM_USER" ] || exit 1
 for id in $(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $1}'); do
-    set -- $(loginctl show-session "$id" -p Name -p Class --value 2>/dev/null)
-    [ "$1" = "$PAM_USER" ] && [ "$2" = "user" ] && exit 0
+    # One property per call: with several -p flags, --value prints them in
+    # systemd's internal table order, not the order requested (#110).
+    name=$(loginctl show-session "$id" -p Name --value 2>/dev/null)
+    class=$(loginctl show-session "$id" -p Class --value 2>/dev/null)
+    [ "$name" = "$PAM_USER" ] && [ "$class" = "user" ] && exit 0
 done
 exit 1
