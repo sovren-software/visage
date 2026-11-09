@@ -4,6 +4,19 @@
 
 ### Security
 
+- **`/var/lib/visage` is now root-only on the AUR and RPM paths.** `faces.db` keeps
+  usernames, labels and enrollment times in clear (embeddings stay AES-GCM encrypted under
+  a 0600 key), so a world-readable state directory told every local user who enrolled what.
+  Debian and NixOS were already 0700. The AUR package ran `install -dm700 .../visage/models`,
+  which makes only `models` 0700 and creates `/var/lib/visage` 0755; the RPM never created
+  the directory at all. Both now create it 0700 and repair an existing one on upgrade or
+  install. The shared unit also sets `StateDirectory=visage` with `StateDirectoryMode=0700`,
+  and `visaged` and `visage setup` create any missing directory 0700, for source installs.
+  `state_dir_mode_contract.rs` reads all four packaging formats so they cannot drift again.
+
+  **Existing AUR and RPM installs:** `sudo chmod 700 /var/lib/visage`. The package upgrade
+  does this, but an install from a source build does not.
+
 - **Seven RustSec advisories in the TLS stack, cleared by lockfile updates.**
   `rustls` 0.23.45 → 0.23.46 (RUSTSEC-2026-0346, -0347, -0348, -0349),
   `rustls-webpki` 0.103.15 → 0.103.16 (RUSTSEC-2026-0382), `webpki-roots` and

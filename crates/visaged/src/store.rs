@@ -10,6 +10,16 @@ use aes_gcm::{
 use rand::rngs::OsRng;
 use rand::RngCore;
 
+/// `create_dir_all`, but every directory it creates is mode 0700. Existing
+/// directories are left as they are.
+fn create_private_dir_all(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(path)
+}
+
 const EMBEDDING_DIM: usize = 512;
 const EMBEDDING_BYTE_LEN: usize = EMBEDDING_DIM * 4;
 
@@ -50,9 +60,11 @@ pub struct FaceModelStore {
 impl FaceModelStore {
     /// Open (or create) the database at the given path and run migrations.
     pub async fn open(db_path: &Path) -> Result<Self, StoreError> {
-        // Ensure parent directory exists
+        // Ensure parent directory exists. Created root-only: faces.db holds
+        // usernames and labels in clear, and the packages that pre-create the
+        // directory are not the only way to install the daemon.
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent).ok();
+            create_private_dir_all(parent).ok();
         }
 
         let enc_key = if db_path == Path::new(":memory:") {
@@ -390,6 +402,48 @@ pub struct ModelInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A unique scratch directory under the system temp dir, no extra crate.
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let p = std::env::temp_dir().join(format!(
+            "visage-store-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&p).unwrap();
+        p
+    }
+
+    fn mode(p: &Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(p).unwrap().permissions().mode() & 0o7777
+    }
+
+    /// Every directory the daemon creates for faces.db is root-only, parents
+    /// included: `install -dm700 a/b` proved that is easy to get wrong.
+    #[test]
+    fn private_dirs_are_0700_at_every_level() {
+        let root = scratch("private");
+        let leaf = root.join("lib/visage");
+        create_private_dir_all(&leaf).unwrap();
+        assert_eq!(mode(&root.join("lib")), 0o700);
+        assert_eq!(mode(&leaf), 0o700);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// Control: the mode reader can report something other than 0700, so the
+    /// test above can fail. Set explicitly, so the umask cannot hide it.
+    #[test]
+    fn the_mode_check_can_see_a_world_readable_dir() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = scratch("control");
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(mode(&root), 0o755);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     #[tokio::test]
     async fn test_roundtrip() {
