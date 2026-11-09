@@ -37,6 +37,18 @@ const LOG_INFO: libc::c_int = 6;
 const LOG_WARNING: libc::c_int = 4;
 const LOG_ERR: libc::c_int = 3;
 
+// Retry pacing for the verification loop (see `pam_sm_authenticate`).
+//
+// Transient failures — nobody in front of the camera, the camera still
+// resuming from suspend, `visaged` restarting after wake — are retried
+// quickly, so the first unlock attempt after opening the lid succeeds instead
+// of racing the camera warmup. A deliberate face-not-match is retried at most
+// once, slowly, and then handed to the password prompt: hammering a wrong
+// face only burns visaged's rate-limit budget (deliberate non-matches are
+// what trigger its lockout; transient errors never count).
+const FAST_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
+const SLOW_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(1500);
+
 extern "C" {
     fn pam_get_user(
         pamh: *mut libc::c_void,
@@ -223,12 +235,15 @@ unsafe fn parse_timeout_secs(argc: libc::c_int, argv: *const *const libc::c_char
 
 /// Connect to the system bus and call `Visage1.Verify(username)`.
 ///
-/// `timeout_secs` bounds the D-Bus method call so a stuck daemon cannot hang
+/// `timeout` bounds the D-Bus method call so a stuck daemon cannot hang
 /// the login. Returns `Ok(false)` if the daemon responds but finds no match.
 /// Returns `Err` if the daemon is not running, the call fails, or times out.
-fn verify_face(username: &str, timeout_secs: u64) -> Result<bool, Box<dyn std::error::Error>> {
+fn verify_face(
+    username: &str,
+    timeout: std::time::Duration,
+) -> Result<bool, Box<dyn std::error::Error>> {
     let conn = zbus::blocking::connection::Builder::system()?
-        .method_timeout(std::time::Duration::from_secs(timeout_secs))
+        .method_timeout(timeout)
         .build()?;
     let proxy = VisageProxyBlocking::new(&conn)?;
     let matched = proxy.verify(username)?;
@@ -284,20 +299,72 @@ pub unsafe extern "C" fn pam_sm_authenticate(
             }
         };
 
-        // Call visaged over D-Bus.
-        match verify_face(username, timeout_secs) {
-            Ok(true) => {
-                syslog_msg(LOG_INFO, &format!("face matched for user '{}'", username));
-                send_text_info(pamh, "Visage: face recognized");
-                PAM_SUCCESS
+        // Deadline-bounded verification loop.
+        //
+        // visaged's Verify is one-shot: it captures frames and returns a
+        // single outcome. The retry policy lives here because only the PAM
+        // layer knows the user's patience budget (`timeout=N`):
+        //
+        //   * transient failures — no face in frame, dark or unreadable
+        //     frames, camera still resuming from suspend, visaged restarting
+        //     after wake — are retried quickly; visaged does NOT count them
+        //     toward its lockout, and this is what makes the first unlock
+        //     after opening the lid succeed instead of racing the camera
+        //     warmup;
+        //   * a deliberate face-not-match (face seen, did not match) is
+        //     retried once, slowly, and then handed to the password prompt —
+        //     visaged counts those toward its lockout, so hammering is
+        //     counterproductive;
+        //   * an active rate-limit lockout is not hammered at all.
+        //
+        // Every exhausted or failed path returns PAM_IGNORE — the password
+        // prompt is always the fallback and the user is never locked out
+        // by this module.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+        let mut slow_retry_used = false;
+        loop {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                syslog_msg(LOG_INFO, "verification budget exhausted before a match");
+                return PAM_IGNORE;
             }
-            Ok(false) => {
-                syslog_msg(LOG_INFO, &format!("no match for user '{}'", username));
-                PAM_IGNORE
-            }
-            Err(e) => {
-                syslog_msg(LOG_WARNING, &format!("D-Bus error: {}", e));
-                PAM_IGNORE
+
+            match verify_face(username, remaining) {
+                Ok(true) => {
+                    syslog_msg(LOG_INFO, &format!("face matched for user '{}'", username));
+                    send_text_info(pamh, "Visage: face recognized");
+                    return PAM_SUCCESS;
+                }
+                Ok(false) => {
+                    syslog_msg(LOG_INFO, &format!("no match for user '{}'", username));
+                    if slow_retry_used {
+                        return PAM_IGNORE;
+                    }
+                    slow_retry_used = true;
+                    std::thread::sleep(SLOW_RETRY_DELAY);
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    // An active lockout must not be hammered — the counter is
+                    // owned by visaged and only it decides when it expires.
+                    if msg.contains("too many failed attempts") {
+                        syslog_msg(LOG_WARNING, &format!("rate limited by visaged: {}", msg));
+                        return PAM_IGNORE;
+                    }
+                    // A missing enrollment cannot be fixed by retrying.
+                    if msg.contains("no enrolled models") {
+                        syslog_msg(LOG_WARNING, "no enrolled models for user");
+                        return PAM_IGNORE;
+                    }
+                    // Everything else is transient: no face in frame, dark
+                    // frames, camera resuming, visaged restarting after wake.
+                    syslog_msg(LOG_INFO, &format!("verify failed, retrying: {}", msg));
+                    if std::time::Instant::now() + FAST_RETRY_DELAY >= deadline {
+                        syslog_msg(LOG_INFO, "verification budget exhausted before a match");
+                        return PAM_IGNORE;
+                    }
+                    std::thread::sleep(FAST_RETRY_DELAY);
+                }
             }
         }
     });
@@ -360,7 +427,10 @@ mod tests {
         // This test will pass in any environment where visaged is not running,
         // including CI. If the daemon happens to be running, the test is skipped
         // to avoid a real camera capture during unit testing.
-        let result = verify_face("_pam_visage_unit_test_user_", DEFAULT_TIMEOUT_SECS);
+        let result = verify_face(
+            "_pam_visage_unit_test_user_",
+            std::time::Duration::from_secs(DEFAULT_TIMEOUT_SECS),
+        );
         // If the daemon is running we get Ok(true/false); that's also fine —
         // the important property is no panic.
         match result {
