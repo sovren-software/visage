@@ -207,6 +207,16 @@
 
 ### Fixed
 
+- **`pam_visage` could hold the password prompt 1.5 s past `timeout=N`.** After a face
+  that did not match, the retry loop from #127 slept 1.5 s before its one slow retry
+  without checking the budget, then found no time left and gave up. On the-first, where
+  a full verify takes about 2.3 s and the lock screen uses the 3 s default, a wrong or
+  unrecognised face held the prompt for about 3.8 s and gained nothing. The loop now
+  skips any wait that would end at or after the deadline, so no path runs past
+  `timeout=N`. The loop is a separate function with the clock passed in, and six
+  tests drive it on a fake clock, including a sweep over 360 cases that asserts the
+  budget is never exceeded.
+
 - **`visage-enroll` destroyed its own verdict on exit.** ratatui runs in the terminal's
   alternate screen, which restores the previous contents when it leaves — so the reason
   an enrollment failed vanished the moment the user pressed `q`. Measured on real

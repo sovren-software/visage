@@ -66,15 +66,21 @@ graphical one was deleted.
 
 1. PAM stack triggers `pam_visage.so`
 2. PAM module connects to `org.freedesktop.Visage1` D-Bus service
-3. Calls `Verify(username)` with a timeout
+3. Calls `Verify(username)`. The module's `timeout=N` (default 3 s) is the total budget:
+   transient failures are retried every 200 ms and a non-match once after 1.5 s, but only
+   while time is left (see the operations guide)
 4. Daemon activates IR emitter (if needed)
-5. Captures N frames, skipping dark frames
+5. Streams frames from one camera stream and examines each as it arrives, skipping dark
+   frames. If every frame is dark, it logs each frame's brightness (mean/p99) and returns
+   "no usable frames"
 6. SCRFD detects face bounding boxes + 5-point landmarks per frame
-7. ArcFace extracts embedding from best detection
-8. **Passive liveness check:** verifies eye landmarks shifted between frames (rejects static photos)
-9. Compares embedding against enrolled models (cosine similarity)
-10. Returns match/no-match to PAM module
-11. PAM module returns PAM_SUCCESS or PAM_IGNORE (safe fallback)
+7. Until a frame matches, ArcFace extracts an embedding from each face and compares it
+   against the enrolled models (cosine similarity). After a match, liveness-enabled
+   verifies only detect landmarks on the remaining frames, and others stop at once
+8. **Passive liveness check:** verifies eye landmarks shifted between frames (rejects
+   static photos); fewer than two landmark frames fails closed
+9. Returns match/no-match to PAM module. A liveness rejection counts as a non-match
+10. PAM module returns PAM_SUCCESS or PAM_IGNORE (safe fallback)
 
 ## Camera Pipeline (visage-hw) — Implemented
 
@@ -610,7 +616,7 @@ the PAM module, D-Bus policy, systemd unit, and pam-auth-update profile.
 
 ### Lifecycle
 
-**Install:** `postinst` creates `/var/lib/visage/`, enables the systemd service, and
+**Install:** `postinst` creates `/var/lib/visage/` root-only (0700), enables the systemd service, and
 runs `pam-auth-update --package` to insert Visage into the PAM stack at priority 900
 (before `pam_unix`).
 
@@ -633,6 +639,7 @@ enforces the same checksums at startup (fail-closed). See [ADR 009](decisions/00
 | `PrivateTmp` | `true` | Isolated temp directory |
 | `DeviceAllow` | `char-video4linux rw` | Camera access (kernel device type — path globs don't work in cgroup v2) |
 | `ReadWritePaths` | `/var/lib/visage` | Database and model storage |
+| `StateDirectory` / `StateDirectoryMode` | `visage` / `0700` | Root-only state directory when systemd creates it (it does not change an existing one) |
 | `MemoryDenyWriteExecute` | `false` | Required for ONNX Runtime JIT |
 
 ### D-Bus Access Control

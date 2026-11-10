@@ -243,9 +243,11 @@ Face auth is automatically active after installation. When you run a command req
 The PAM module's `timeout=N` argument (default 3) is the **total** budget for face auth on
 one attempt, not a single call. Within it, `pam_visage` retries transient failures — no face
 in frame, dark frames, the daemon restarting after resume — every 200 ms, and a face that
-was seen but did not match once more after 1.5 s. A lockout, a missing enrollment, an
-unknown user or a refused caller ends the attempt at once. Every path that does not match
-falls through to the password.
+was seen but did not match once more after 1.5 s. A wait that would end at or after the
+budget is skipped, so the attempt never runs past `timeout=N`: with the 3 s default and a
+verify of about 2 s, a face that does not match goes straight to the password. A lockout,
+a missing enrollment, an unknown user or a refused caller ends the attempt at once. Every
+path that does not match falls through to the password.
 
 ⚠️ Because transient failures are retried, a **stopped** daemon now costs the full
 `timeout=N` on every authentication, where it used to fail at once. If you disable
@@ -603,6 +605,19 @@ visage test --frames 5
 ```
 
 If the emitter isn't activating, the camera may need a quirk entry.
+
+When a verify fails because every frame was dark, `visaged` logs the brightness of each
+rejected frame (up to 32), as `sequence: mean/p99` on a 0–255 scale:
+
+```bash
+journalctl -u visaged -g 'verify saw only dark frames'
+# frames=seq 41: 1.0/2, seq 42: 4.4/120, ...
+```
+
+A p99 near 0 on every frame means the sensor saw nothing at all: check the privacy shutter
+and whether the emitter fires (many phone cameras show an IR LED). A low mean with a high
+p99 means a small part of the frame was lit and the rest was dark, which is what the dark
+filter rejects (more than 95% of pixels below 32).
 See [contrib/hw/README.md](../contrib/hw/README.md).
 
 ---

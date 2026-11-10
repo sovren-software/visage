@@ -275,6 +275,75 @@ fn verify_face(
     Ok(matched)
 }
 
+/// What [`verify_until`] concluded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Verdict {
+    /// A face matched: `PAM_SUCCESS`.
+    Matched,
+    /// Anything else: `PAM_IGNORE`, so the password prompt follows.
+    Ignore,
+}
+
+/// The deadline-bounded retry loop. The policy is described where
+/// `pam_sm_authenticate` calls it.
+///
+/// The clock, the daemon call and the sleep are parameters, so the tests run
+/// this exact loop on a fake clock. `verify` gets the time left and returns
+/// `Ok(matched)` or the error text.
+///
+/// No path sleeps to or past `deadline`. A wait that ends there leaves no
+/// time for another verify, so it would only hold the password prompt back.
+fn verify_until(
+    username: &str,
+    deadline: std::time::Instant,
+    now: impl Fn() -> std::time::Instant,
+    mut verify: impl FnMut(std::time::Duration) -> Result<bool, String>,
+    mut sleep: impl FnMut(std::time::Duration),
+    mut log: impl FnMut(libc::c_int, &str),
+) -> Verdict {
+    let mut slow_retry_used = false;
+    loop {
+        let remaining = deadline.saturating_duration_since(now());
+        if remaining.is_zero() {
+            log(LOG_INFO, "verification budget exhausted before a match");
+            return Verdict::Ignore;
+        }
+
+        match verify(remaining) {
+            Ok(true) => {
+                log(LOG_INFO, &format!("face matched for user '{}'", username));
+                return Verdict::Matched;
+            }
+            Ok(false) => {
+                log(LOG_INFO, &format!("no match for user '{}'", username));
+                if slow_retry_used {
+                    return Verdict::Ignore;
+                }
+                if now() + SLOW_RETRY_DELAY >= deadline {
+                    log(LOG_INFO, "no time left in the budget for a second attempt");
+                    return Verdict::Ignore;
+                }
+                slow_retry_used = true;
+                sleep(SLOW_RETRY_DELAY);
+            }
+            Err(msg) => {
+                if let Some(reason) = permanent_error(&msg) {
+                    log(LOG_WARNING, &format!("{reason}: {msg}"));
+                    return Verdict::Ignore;
+                }
+                // Everything else is transient: no face in frame, dark
+                // frames, camera resuming, visaged restarting after wake.
+                log(LOG_INFO, &format!("verify failed, retrying: {}", msg));
+                if now() + FAST_RETRY_DELAY >= deadline {
+                    log(LOG_INFO, "verification budget exhausted before a match");
+                    return Verdict::Ignore;
+                }
+                sleep(FAST_RETRY_DELAY);
+            }
+        }
+    }
+}
+
 /// PAM authentication entry point.
 ///
 /// Called by the PAM stack when `auth sufficient pam_visage.so` is configured.
@@ -346,44 +415,19 @@ pub unsafe extern "C" fn pam_sm_authenticate(
         // prompt is always the fallback and the user is never locked out
         // by this module.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
-        let mut slow_retry_used = false;
-        loop {
-            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-            if remaining.is_zero() {
-                syslog_msg(LOG_INFO, "verification budget exhausted before a match");
-                return PAM_IGNORE;
-            }
-
-            match verify_face(username, remaining) {
-                Ok(true) => {
-                    syslog_msg(LOG_INFO, &format!("face matched for user '{}'", username));
-                    send_text_info(pamh, "Visage: face recognized");
-                    return PAM_SUCCESS;
-                }
-                Ok(false) => {
-                    syslog_msg(LOG_INFO, &format!("no match for user '{}'", username));
-                    if slow_retry_used {
-                        return PAM_IGNORE;
-                    }
-                    slow_retry_used = true;
-                    std::thread::sleep(SLOW_RETRY_DELAY);
-                }
-                Err(e) => {
-                    let msg = e.to_string();
-                    if let Some(reason) = permanent_error(&msg) {
-                        syslog_msg(LOG_WARNING, &format!("{reason}: {msg}"));
-                        return PAM_IGNORE;
-                    }
-                    // Everything else is transient: no face in frame, dark
-                    // frames, camera resuming, visaged restarting after wake.
-                    syslog_msg(LOG_INFO, &format!("verify failed, retrying: {}", msg));
-                    if std::time::Instant::now() + FAST_RETRY_DELAY >= deadline {
-                        syslog_msg(LOG_INFO, "verification budget exhausted before a match");
-                        return PAM_IGNORE;
-                    }
-                    std::thread::sleep(FAST_RETRY_DELAY);
-                }
-            }
+        let verdict = verify_until(
+            username,
+            deadline,
+            std::time::Instant::now,
+            |remaining| verify_face(username, remaining).map_err(|e| e.to_string()),
+            std::thread::sleep,
+            syslog_msg,
+        );
+        if verdict == Verdict::Matched {
+            send_text_info(pamh, "Visage: face recognized");
+            PAM_SUCCESS
+        } else {
+            PAM_IGNORE
         }
     });
 
@@ -506,6 +550,144 @@ mod tests {
         ] {
             assert_eq!(permanent_error(msg), None, "should retry: {msg}");
         }
+    }
+
+    fn ms(n: u64) -> std::time::Duration {
+        std::time::Duration::from_millis(n)
+    }
+
+    /// What one run of [`verify_until`] did on the fake clock.
+    struct Run {
+        verdict: Verdict,
+        elapsed: std::time::Duration,
+        calls: usize,
+        sleeps: Vec<std::time::Duration>,
+    }
+
+    /// Run the real loop on a fake clock. Each daemon call takes `call`, cut
+    /// short at the time left as the D-Bus method timeout does, and answers
+    /// from `answers`, repeating the last one. Nothing really waits.
+    fn run(budget: u64, call: u64, answers: &[Result<bool, &str>]) -> Run {
+        let t0 = std::time::Instant::now();
+        let elapsed = std::cell::Cell::new(std::time::Duration::ZERO);
+        let calls = std::cell::Cell::new(0usize);
+        let mut sleeps = Vec::new();
+        let deadline = t0 + ms(budget);
+        let verdict = verify_until(
+            "cc",
+            deadline,
+            || t0 + elapsed.get(),
+            |remaining| {
+                let i = calls.get();
+                calls.set(i + 1);
+                if ms(call) > remaining {
+                    elapsed.set(elapsed.get() + remaining);
+                    return Err("org.freedesktop.DBus.Error.NoReply: timed out".to_string());
+                }
+                elapsed.set(elapsed.get() + ms(call));
+                answers[i.min(answers.len() - 1)].map_err(str::to_string)
+            },
+            |d| {
+                sleeps.push(d);
+                elapsed.set(elapsed.get() + d);
+            },
+            |_, _| {},
+        );
+        Run {
+            verdict,
+            elapsed: elapsed.get(),
+            calls: calls.get(),
+            sleeps,
+        }
+    }
+
+    const NO_FACE: &str =
+        "org.freedesktop.DBus.Error.Failed: no face detected in any captured frame";
+
+    /// The defect this test pins: a non-match late in the budget slept 1.5 s
+    /// past `timeout=N`, then gave up anyway. The numbers are the-first's: a
+    /// full verify takes about 2.3 s, and its lock screen uses the 3 s default.
+    #[test]
+    fn a_late_non_match_does_not_sleep_past_the_budget() {
+        let r = run(3000, 2300, &[Ok(false)]);
+        assert_eq!(r.verdict, Verdict::Ignore);
+        assert_eq!(r.calls, 1);
+        assert!(
+            r.sleeps.is_empty(),
+            "slept {:?} with no time to use it",
+            r.sleeps
+        );
+        assert_eq!(r.elapsed, ms(2300));
+    }
+
+    /// Control for the test above: with room left, a non-match still gets its
+    /// one slow retry.
+    #[test]
+    fn a_non_match_with_room_left_is_retried_once() {
+        let r = run(6000, 2000, &[Ok(false)]);
+        assert_eq!(r.verdict, Verdict::Ignore);
+        assert_eq!(r.calls, 2);
+        assert_eq!(r.sleeps, vec![SLOW_RETRY_DELAY]);
+        assert_eq!(r.elapsed, ms(5500));
+    }
+
+    #[test]
+    fn a_match_on_the_slow_retry_succeeds() {
+        let r = run(6000, 2000, &[Ok(false), Ok(true)]);
+        assert_eq!(r.verdict, Verdict::Matched);
+        assert_eq!(r.calls, 2);
+    }
+
+    #[test]
+    fn transient_errors_are_retried_until_the_budget_ends() {
+        let r = run(3000, 800, &[Err(NO_FACE)]);
+        assert_eq!(r.verdict, Verdict::Ignore);
+        // 0-800 ms, wait to 1000; 1000-1800, wait to 2000; 2000-2800, and a
+        // wait to 3000 would leave nothing, so it stops.
+        assert_eq!(r.calls, 3);
+        assert_eq!(r.sleeps, vec![FAST_RETRY_DELAY; 2]);
+        assert_eq!(r.elapsed, ms(2800));
+    }
+
+    #[test]
+    fn a_permanent_error_ends_the_loop_at_once() {
+        let r = run(
+            6000,
+            100,
+            &[Err(
+                "org.freedesktop.DBus.Error.Failed: too many failed attempts; try again in 30s",
+            )],
+        );
+        assert_eq!((r.verdict, r.calls), (Verdict::Ignore, 1));
+        assert!(r.sleeps.is_empty());
+        assert_eq!(r.elapsed, ms(100));
+    }
+
+    /// `timeout=N` is a total budget: whatever the daemon answers and however
+    /// long each call takes, the loop never runs past the deadline.
+    #[test]
+    fn no_answer_sequence_runs_past_the_budget() {
+        let sequences: [&[Result<bool, &str>]; 4] = [
+            &[Ok(false)],
+            &[Err(NO_FACE)],
+            &[Err(NO_FACE), Ok(false)],
+            &[Ok(false), Err(NO_FACE)],
+        ];
+        let mut runs = 0;
+        for budget in [1000, 3000, 6000] {
+            for call in (100..=3000).step_by(100) {
+                for answers in sequences {
+                    let r = run(budget, call, answers);
+                    assert!(
+                        r.elapsed <= ms(budget),
+                        "budget {budget} ms, call {call} ms, {answers:?}: ran {:?}",
+                        r.elapsed
+                    );
+                    runs += 1;
+                }
+            }
+        }
+        assert_eq!(runs, 3 * 30 * 4, "the sweep must cover every case");
     }
 
     /// Build a C-style argv from Rust strings for the parser tests.
