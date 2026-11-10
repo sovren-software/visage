@@ -4,7 +4,7 @@
 //! on Windows Hello-compatible cameras, replacing the external
 //! `linux-enable-ir-emitter` dependency.
 
-use crate::quirks::{get_usb_ids, lookup_quirk, CameraQuirk};
+use crate::quirks::{get_usb_ids, lookup_quirk, CameraQuirk, EmitterControl};
 use std::cell::RefCell;
 use std::fs::{File, OpenOptions};
 use std::os::unix::io::AsRawFd;
@@ -71,13 +71,15 @@ impl IrEmitter {
         })
     }
 
-    /// Activate the IR emitter by sending the quirk's control bytes.
+    /// Activate the IR emitter by sending the quirk's controls in order.
+    ///
+    /// If activating any control fails, controls already set are rolled back
+    /// (switched off) in reverse order so the camera is not left partially illuminated.
     pub fn activate(&self) -> Result<(), EmitterError> {
         tracing::debug!(device = %self.device_path, "activating IR emitter");
-        let mut payload = self.quirk.emitter.control_bytes.clone();
 
         // reset_on_close devices forget the control the moment the fd closes,
-        // so open a fresh fd, set it, and hold it open until deactivate().
+        // so open a fresh fd, set controls, and hold it open until deactivate().
         if self.quirk.emitter.reset_on_close {
             self.active_fd.borrow_mut().take(); // drop any stale fd first
             let file = OpenOptions::new()
@@ -85,25 +87,32 @@ impl IrEmitter {
                 .write(true)
                 .open(&self.device_path)
                 .map_err(EmitterError::Open)?;
-            let result = Self::send_via_fd(&file, self.quirk, &mut payload);
+            Self::activate_controls_via_fd(&file, &self.quirk.emitter.controls)?;
             *self.active_fd.borrow_mut() = Some(file);
-            return result;
+            return Ok(());
         }
 
-        // Default: open, set the control, close.
-        self.send_uvc_control(&mut payload)
+        // Default: open, set controls, close.
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&self.device_path)
+            .map_err(EmitterError::Open)?;
+        Self::activate_controls_via_fd(&file, &self.quirk.emitter.controls)
     }
 
     /// Deactivate the IR emitter after a capture.
+    ///
+    /// Controls are deactivated in reverse order. Every control is attempted even if
+    /// an earlier one fails, and the first error encountered is returned.
     pub fn deactivate(&self) -> Result<(), EmitterError> {
         tracing::debug!(device = %self.device_path, "deactivating IR emitter");
-        let mut payload = self.off_payload();
 
         // reset_on_close devices reset the control when the fd closes, so send
         // "off" through the held fd, then close it to return control to default.
         if self.quirk.emitter.reset_on_close {
             let result = match self.active_fd.borrow().as_ref() {
-                Some(file) => Self::send_via_fd(file, self.quirk, &mut payload),
+                Some(file) => Self::deactivate_controls_via_fd(file, &self.quirk.emitter.controls),
                 None => Ok(()),
             };
             self.active_fd.borrow_mut().take();
@@ -111,7 +120,12 @@ impl IrEmitter {
         }
 
         // Default: open, send "off", close.
-        self.send_uvc_control(&mut payload)
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&self.device_path)
+            .map_err(EmitterError::Open)?;
+        Self::deactivate_controls_via_fd(&file, &self.quirk.emitter.controls)
     }
 
     /// Device path this emitter controls.
@@ -124,35 +138,69 @@ impl IrEmitter {
         &self.quirk.device.name
     }
 
-    /// Deactivate IR emitter by sending zeros of `control_bytes` length or
-    /// send explicit `off_bytes` when provided for cameras that require them.
-    fn off_payload(&self) -> Vec<u8> {
-        match &self.quirk.emitter.off_bytes {
-            Some(off) if !off.is_empty() => off.clone(),
-            _ => vec![0u8; self.quirk.emitter.control_bytes.len()],
+    /// Activate controls in order, rolling back previously set controls in reverse
+    /// order on failure.
+    fn activate_controls_via_fd(
+        file: &File,
+        controls: &[EmitterControl],
+    ) -> Result<(), EmitterError> {
+        for (i, ctrl) in controls.iter().enumerate() {
+            let mut payload = ctrl.control_bytes.clone();
+            if let Err(err) = Self::send_xu_control(file, ctrl.unit, ctrl.selector, &mut payload) {
+                tracing::warn!(
+                    unit = ctrl.unit,
+                    selector = ctrl.selector,
+                    error = %err,
+                    "failed to activate emitter control, rolling back"
+                );
+                for prev_ctrl in controls[..i].iter().rev() {
+                    let mut off = prev_ctrl.off_payload();
+                    let _ =
+                        Self::send_xu_control(file, prev_ctrl.unit, prev_ctrl.selector, &mut off);
+                }
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    /// Deactivate controls in reverse order, attempting all controls and returning
+    /// the first error encountered.
+    fn deactivate_controls_via_fd(
+        file: &File,
+        controls: &[EmitterControl],
+    ) -> Result<(), EmitterError> {
+        let mut first_err = None;
+        for ctrl in controls.iter().rev() {
+            let mut payload = ctrl.off_payload();
+            if let Err(err) = Self::send_xu_control(file, ctrl.unit, ctrl.selector, &mut payload) {
+                tracing::warn!(
+                    unit = ctrl.unit,
+                    selector = ctrl.selector,
+                    error = %err,
+                    "failed to deactivate emitter control"
+                );
+                if first_err.is_none() {
+                    first_err = Some(err);
+                }
+            }
+        }
+        match first_err {
+            Some(err) => Err(err),
+            None => Ok(()),
         }
     }
 
-    /// Open a second fd here rather than requiring `AsRawFd` on `Camera`.
-    /// Open with read+write, send one control, close (default)
-    fn send_uvc_control(&self, payload: &mut [u8]) -> Result<(), EmitterError> {
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&self.device_path)
-            .map_err(EmitterError::Open)?;
-        Self::send_via_fd(&file, self.quirk, payload)
-    }
-
     /// Send one UVC `SET_CUR` control over an already-open fd.
-    fn send_via_fd(
+    fn send_xu_control(
         file: &File,
-        quirk: &CameraQuirk,
+        unit: u8,
+        selector: u8,
         payload: &mut [u8],
     ) -> Result<(), EmitterError> {
         let mut query = UvcXuControlQuery {
-            unit: quirk.emitter.unit,
-            selector: quirk.emitter.selector,
+            unit,
+            selector,
             query: UVC_SET_CUR,
             _pad0: 0,
             size: payload.len() as u16,
