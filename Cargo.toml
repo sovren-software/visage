@@ -83,7 +83,7 @@ openvino = { version = "0.11", features = ["runtime-linking"] }
 
 # Cryptography (embedding encryption)
 aes-gcm = "0.10"
-rand = "0.8"
+rand = "0.9"
 sha2 = "0.10"
 
 # FFI / system
