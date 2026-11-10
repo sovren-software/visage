@@ -16,6 +16,8 @@ pub struct AppState {
     pub engine: EngineHandle,
     pub store: FaceModelStore,
     pub rate_limiter: RateLimiter,
+    /// Latest device rotation, kept by the `VISAGE_ROTATE=auto` watcher.
+    pub device_rotation: crate::orientation::DeviceRotation,
 }
 
 /// D-Bus interface for the Visage biometric daemon.
@@ -273,6 +275,7 @@ impl VisageService {
             "similarity_threshold": state.config.similarity_threshold,
             "verify_timeout_secs": state.config.verify_timeout_secs,
             "face_wait_ms": state.config.face_wait.as_millis() as u64,
+            "rotate": format!("{:?}", state.config.rotate).to_lowercase(),
             "warmup_frames": state.config.warmup_frames,
             "frames_per_verify": state.config.frames_per_verify,
             "frames_per_enroll": state.config.frames_per_enroll,
@@ -407,6 +410,7 @@ impl VisageService {
             frames_count,
             timeout_secs,
             face_wait,
+            rotate,
             liveness_enabled,
             liveness_min_displacement,
         ) = {
@@ -422,6 +426,7 @@ impl VisageService {
                 state.config.frames_per_verify,
                 state.config.verify_timeout_secs,
                 state.config.face_wait,
+                state.config.rotate,
                 state.config.liveness_enabled,
                 state.config.liveness_min_displacement,
             )
@@ -435,6 +440,13 @@ impl VisageService {
             ));
         }
 
+        // --- Frame rotation for the device orientation (never fails) ---
+        let rotation = match rotate {
+            crate::orientation::RotateMode::Off => crate::orientation::Rotation::None,
+            crate::orientation::RotateMode::Fixed(r) => r,
+            crate::orientation::RotateMode::Auto => self.state.lock().await.device_rotation.get(),
+        };
+
         // --- Run engine with timeout (no lock held) ---
         // Runtime errors (camera failure, timeout) are returned as Err and do NOT count
         // as rate-limit failures. Liveness failures are treated as deliberate auth failures
@@ -447,6 +459,7 @@ impl VisageService {
                 frames_count,
                 timeout,
                 face_wait,
+                rotation,
                 liveness_enabled,
                 liveness_min_displacement,
             )
