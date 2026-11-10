@@ -1,0 +1,20 @@
+[device]
+vendor_id  = 0x5986
+product_id = 0x2174
+name       = "Lenovo IdeaPad Pro 5 14IAH10 IR Camera (Bison 5986:2174)"
+
+[emitter]
+# Bison 5986:2174 requires two sequential UVC extension unit controls:
+# 1. Unit 7 selector 6 enables the IR emitter mode (Windows Hello IR control).
+#    Off value is [1, 3, 1, ...], On value is [1, 3, 2, ...].
+# 2. Unit 5 selector 2 sets the IR LED intensity / driver power level (0-100).
+[[emitter.controls]]
+unit          = 7
+selector      = 6
+control_bytes = [1, 3, 2, 0, 0, 0, 0, 0, 0]
+off_bytes     = [1, 3, 1, 0, 0, 0, 0, 0, 0]
+
+[[emitter.controls]]
+unit          = 5
+selector      = 2
+control_bytes = [100]
