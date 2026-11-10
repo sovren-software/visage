@@ -376,6 +376,7 @@ Environment=VARIABLE=value
 | `VISAGE_SIMILARITY_THRESHOLD` | `0.40` | Cosine similarity match threshold (0–1) |
 | `VISAGE_VERIFY_TIMEOUT_SECS` | `10` | Max seconds for a verify attempt |
 | `VISAGE_FACE_WAIT_MS` | `0` | How long a verify keeps looking, on the same camera stream, while no face has been seen yet (lid still opening, sensor dark after resume). `pam_visage` retries such a verify anyway, but each retry restarts the camera; with a window the daemon notices the face within a frame or two. `0` = one group of frames. A face that is seen ends the verify, matched or not. Keep it below `pam_visage.so timeout=N`; the window is also capped by `VISAGE_VERIFY_TIMEOUT_SECS`. |
+| `VISAGE_ROTATE` | off | Turn frames upright before they are examined. `auto` follows the device orientation from iio-sensor-proxy (tablets and convertibles held upside down or sideways); `90`, `180`, `270` for a camera mounted turned. Without a sensor, `auto` does not rotate. |
 | `VISAGE_FRAMES_PER_VERIFY` | `3` | Frames captured per authentication |
 | `VISAGE_FRAMES_PER_ENROLL` | `5` | Frames captured per enrollment |
 | `VISAGE_WARMUP_FRAMES` | `4` | Usable frames discarded at daemon start, captured with the IR emitter active so auto-gain settles against it. Raise it if the first verify after start fails and later ones work. |

@@ -19,6 +19,8 @@ visage-hw = { path = "../visage-hw" }
 visage-models = { path = "../visage-models" }
 tokio = { workspace = true }
 zbus = { workspace = true }
+# Already in the tree through zbus; for reading its signal streams.
+futures-lite = "2"
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 serde = { workspace = true }
@@ -31,6 +33,11 @@ chrono = { workspace = true }
 aes-gcm = { workspace = true }
 rand = { workspace = true }
 nix = { workspace = true, features = ["user"] }
+
+[dev-dependencies]
+# A peer-to-peer D-Bus connection stands in for a bus without iio-sensor-proxy
+# in the orientation watcher test, so it needs no system bus.
+zbus = { workspace = true, features = ["p2p"] }
 
 [package.metadata.deb]
 name = "visage"

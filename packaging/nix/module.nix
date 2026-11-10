@@ -231,6 +231,22 @@ in
       '';
     };
 
+    rotate = lib.mkOption {
+      type = lib.types.nullOr (lib.types.enum [ "off" "auto" "0" "90" "180" "270" ]);
+      default = null;
+      example = "auto";
+      description = ''
+        Turn camera frames upright before they are examined. When null, the
+        daemon uses its compiled default (off).
+
+        `auto` follows the device orientation from iio-sensor-proxy, for
+        tablets and convertibles held upside down or sideways, where the face
+        detector would otherwise see the face turned and find nothing. A
+        fixed `90`, `180` or `270` is for a camera mounted turned. With no
+        sensor or no iio-sensor-proxy, `auto` does not rotate.
+      '';
+    };
+
     emitter.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -373,6 +389,8 @@ in
         VISAGE_INFERENCE_CACHE_DIR = cfg.inference.cacheDir;
       } // lib.optionalAttrs (cfg.faceWaitMs != null) {
         VISAGE_FACE_WAIT_MS = toString cfg.faceWaitMs;
+      } // lib.optionalAttrs (cfg.rotate != null) {
+        VISAGE_ROTATE = cfg.rotate;
       } // lib.optionalAttrs (!cfg.emitter.enable) {
         VISAGE_EMITTER_ENABLED = "0";
       };
