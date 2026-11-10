@@ -39,6 +39,13 @@
 
 ### Changed
 
+- **rand 0.8 → 0.9; an OS random-source failure is now an error, not a panic.** rand 0.9
+  makes `OsRng` fallible (`TryRngCore`), so the encryption key and every AES-GCM nonce
+  come from `try_fill_bytes`, and a failure returns `StoreError::Random` before any key or
+  nonce is used. The lockfile drops `rand 0.8.8` and `rand_chacha 0.3.1`. Two new tests:
+  16 encryptions get 16 distinct, non-zero nonces, and a generated key is random, 0600,
+  and read back unchanged. Supersedes dependabot #146, which did not compile.
+
 - **MSRV 1.88 → 1.89.** `rusqlite` 0.41.0 and 0.41.1 both declare 1.89 in their manifests,
   although the 0.41.0 release note says it lowered the MSRV to 1.88. The `msrv` CI job
   checks the new value.

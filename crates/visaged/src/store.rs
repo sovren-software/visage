@@ -8,7 +8,7 @@ use aes_gcm::{
     Aes256Gcm, Key, Nonce,
 };
 use rand::rngs::OsRng;
-use rand::RngCore;
+use rand::TryRngCore;
 
 /// `create_dir_all`, but every directory it creates is mode 0700. Existing
 /// directories are left as they are.
@@ -41,6 +41,10 @@ pub enum StoreError {
     InvalidEmbeddingValue,
     #[error("encryption key I/O error: {0}")]
     KeyIo(#[source] std::io::Error),
+    /// The OS random source failed. rand 0.9 reports this instead of
+    /// panicking; no nonce or key is ever made from an unfilled buffer.
+    #[error("operating system random source failed: {0}")]
+    Random(String),
 }
 
 /// SQLite-backed face model storage with AES-256-GCM encryption.
@@ -247,7 +251,9 @@ impl FaceModelStore {
         let plaintext = embedding_to_bytes(values);
 
         let mut nonce_bytes = [0u8; 12];
-        OsRng.fill_bytes(&mut nonce_bytes);
+        OsRng
+            .try_fill_bytes(&mut nonce_bytes)
+            .map_err(|e| StoreError::Random(e.to_string()))?;
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         let key = Key::<Aes256Gcm>::from_slice(&self.enc_key);
@@ -314,7 +320,9 @@ fn load_or_generate_key(key_path: &Path) -> Result<[u8; 32], StoreError> {
         Ok(key)
     } else {
         let mut key = [0u8; 32];
-        OsRng.fill_bytes(&mut key);
+        OsRng
+            .try_fill_bytes(&mut key)
+            .map_err(|e| StoreError::Random(e.to_string()))?;
 
         use std::io::Write;
         use std::os::unix::fs::OpenOptionsExt;
@@ -669,6 +677,43 @@ mod tests {
         let last = tampered.len() - 1;
         tampered[last] ^= 0x01;
         assert!(store.decrypt_embedding(&tampered).is_err());
+    }
+
+    /// Every encryption draws a fresh nonce from the OS. AES-GCM with a
+    /// repeated nonce under one key leaks the XOR of the plaintexts and the
+    /// authentication key, so this pins that the random source is really
+    /// called (an unfilled buffer would give the all-zero nonce twice).
+    #[tokio::test]
+    async fn every_encryption_gets_a_fresh_nonce() {
+        let store = FaceModelStore {
+            conn: crate::db::Connection::open(Path::new(":memory:"))
+                .await
+                .unwrap(),
+            enc_key: [7u8; 32],
+        };
+        let values: Vec<f32> = (0..EMBEDDING_DIM).map(|i| i as f32 / 512.0).collect();
+        let nonces: Vec<Vec<u8>> = (0..16)
+            .map(|_| store.encrypt_embedding(&values).unwrap()[..12].to_vec())
+            .collect();
+        for (i, n) in nonces.iter().enumerate() {
+            assert_ne!(n.as_slice(), &[0u8; 12], "nonce {i} is all zero");
+            for m in &nonces[i + 1..] {
+                assert_ne!(n, m, "a nonce repeated");
+            }
+        }
+    }
+
+    /// A new key comes from the OS random source and is written 0600.
+    #[test]
+    fn a_generated_key_is_random_and_owner_only() {
+        let dir = scratch("keygen");
+        let a = load_or_generate_key(&dir.join("a.key")).unwrap();
+        let b = load_or_generate_key(&dir.join("b.key")).unwrap();
+        assert_ne!(a, [0u8; 32], "key is all zero");
+        assert_ne!(a, b, "two new keys are equal");
+        assert_eq!(mode(&dir.join("a.key")), 0o600);
+        // Loading an existing key returns it unchanged.
+        assert_eq!(load_or_generate_key(&dir.join("a.key")).unwrap(), a);
     }
 
     #[tokio::test]
