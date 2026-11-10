@@ -64,6 +64,11 @@ O(10–100) rows). WAL mode enables concurrent reads without blocking writes. Ra
 bytes are more compact than JSON (~4× smaller) and eliminate a deserialization step on
 gallery fetch.
 
+**Amended 2026-11-09 (#136):** `tokio-rusqlite` is gone. It pinned rusqlite 0.32, and the
+fix for RUSTSEC-2026-0459 (SQLite) shipped only in rusqlite 0.41. `visaged/src/db.rs` now
+does the same job directly: one `rusqlite::Connection` behind a mutex, each call run on
+`spawn_blocking`. WAL mode, the schema and the embedding encoding are unchanged.
+
 **v3 data plane:** Two extra columns (`quality_score REAL`, `pose_label TEXT`) are
 included in the schema now with defaults. This avoids a breaking schema migration when
 pose-indexed enrollment is added.

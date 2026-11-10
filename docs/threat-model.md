@@ -22,7 +22,7 @@ are active in the current codebase. Items marked **(roadmap)** are not yet prese
 | Replay attack (recorded video) | IR strobe pattern detection (odd/even frame analysis) | ⛔ **Measured and rejected 2026-09-16** on `3277:0055` — a phone screen swings 1.71× MORE than a live face (specular glass vs diffuse skin), and the value is attacker-controllable by tilt. See the [hardware report](hardware-reports/asus-zenbook-um3406ha-3277-0055.md). |
 | Unauthorized enrollment | Root-only enrollment via D-Bus policy | ✅ v0.3 — D-Bus policy restricts Enroll to root |
 | Timing side channel | Constant-time embedding comparison | ✅ v0.3 — `CosineMatcher` always processes all gallery entries |
-| Login hang (daemon crash) | 3-second PAM call timeout | ✅ v0.3 (Step 6) — `method_timeout(3s)` via zbus connection builder |
+| Login hang (daemon crash) | PAM `timeout=N` total budget (default 3 s) | ✅ v0.3 (Step 6), budget since #127 — each D-Bus call's `method_timeout` is the time left, and no retry wait runs past the budget |
 | Auth failure leaks user info | syslog at LOG_AUTHPRIV | ✅ v0.3 (Step 6) — goes to `/var/log/auth.log`, not terminal |
 
 ### Tier 1 — Liveness
@@ -82,6 +82,7 @@ The packaging step added systemic hardening beyond the core auth logic:
 | `CapabilityBoundingSet=` (empty) | All Linux capabilities dropped — root with no capabilities |
 | `DeviceAllow=char-video4linux rw` | Camera access is the only device permission |
 | `PrivateNetwork=true` | Own network namespace, loopback only — the daemon cannot reach the network |
+| `StateDirectory=visage`, `StateDirectoryMode=0700` | systemd creates `/var/lib/visage` root-only when it is missing. It does not change an existing directory, so each package's install script also sets 0700 (the 0.4.0 AUR package shipped it 0755, and the RPM never created it) |
 | `MemoryDenyWriteExecute=false` | Intentionally disabled — ONNX Runtime requires W+X for JIT |
 
 The `MemoryDenyWriteExecute=false` exception is the most significant hardening gap. It allows
@@ -116,7 +117,7 @@ This works for local users and NSS-backed identities (LDAP/SSSD/AD), but it does
 |----------|---------------|
 | Never locks user out | All error paths return `PAM_IGNORE` (falls through to password) |
 | No panic across FFI | `std::panic::catch_unwind` wraps all Rust logic |
-| Login hang prevention | 3-second D-Bus connection timeout |
+| Login hang prevention | `timeout=N` (default 3 s) bounds the whole attempt: every D-Bus call and retry wait |
 | Auth log only | `openlog(LOG_AUTHPRIV)` — messages go to `/var/log/auth.log` |
 | No terminal leakage | `syslog(3)` replaces `eprintln!` in production build |
 | Format string safety | syslog called as `syslog(priority, "%s", msg)` — no format injection |
