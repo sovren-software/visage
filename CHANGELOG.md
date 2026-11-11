@@ -89,6 +89,22 @@
 
 ### Added
 
+- **`VISAGE_FACE_WAIT_MS`: keep looking for a face on the same stream.** A verify often
+  starts before the user is in front of the camera. `pam_visage` retries it until its
+  `timeout=N` budget runs out (#127), but every retry starts the camera stream again.
+  With a window set, a verify that has seen no face keeps reading the stream, one group
+  of `frames_per_verify` frames after another, until a face appears or the window ends.
+  A face that is seen ends the verify as before, matched or not, so a request never
+  becomes several attempts against the gallery; its group is counted from the face's
+  frame, so the liveness check gets `frames_per_verify` frames even when the face first
+  appears late in a group. "No usable frames" is still reported only when every frame of
+  the verify was dark. `bursts` in the timing line
+  counts the groups. Default `0` (one group, as before); `services.visage.faceWaitMs` on
+  NixOS. On a ThinkPad X12 Detachable Gen 1 (GPU inference), waiting for a face went
+  from a new verify every ~618 ms (3 frames each, ~4.9 frames/s examined) to one verify
+  examining ~26.5 frames/s, so a face should be noticed within about one frame instead
+  of up to ~0.55 s later.
+
 - **A verify that sees only dark frames now logs why it might have.** One warning lists
   each rejected frame's sequence number and its mean and 99th-percentile brightness. On one
   ASUS UM3406HA (`3277:0055`), stretches of all-dark verifies have lasted from seconds to

@@ -12,6 +12,22 @@ pub struct Config {
     pub similarity_threshold: f32,
     /// Timeout in seconds for a verify operation.
     pub verify_timeout_secs: u64,
+    /// How long a verify keeps looking, on the same camera stream, while no
+    /// face has been seen yet.
+    ///
+    /// A verify often starts before the user is in front of the camera: the
+    /// lid is still opening, or the sensor is still dark after resume.
+    /// `pam_visage` retries such a verify until its `timeout=N` budget runs
+    /// out, but every retry starts the camera stream again. With a window set,
+    /// the daemon keeps reading the stream instead, one group of
+    /// `frames_per_verify` frames after another, so a face is noticed within a
+    /// frame or two of appearing. A face that is seen ends the verify as
+    /// before, matched or not.
+    ///
+    /// Zero (the default) keeps one group of frames per verify. Keep it below
+    /// the client's budget (`pam_visage.so timeout=N`, default 3 s); the
+    /// window is also capped by `verify_timeout_secs`.
+    pub face_wait: std::time::Duration,
     /// Number of warmup frames to discard at startup (camera AGC/AE stabilization).
     pub warmup_frames: usize,
     /// Number of frames to capture per verify attempt.
@@ -66,6 +82,7 @@ impl Config {
             db_path,
             similarity_threshold: env_f32("VISAGE_SIMILARITY_THRESHOLD", 0.40),
             verify_timeout_secs: env_u64("VISAGE_VERIFY_TIMEOUT_SECS", 10),
+            face_wait: std::time::Duration::from_millis(env_u64("VISAGE_FACE_WAIT_MS", 0)),
             warmup_frames: env_usize("VISAGE_WARMUP_FRAMES", 4),
             frames_per_verify: env_usize("VISAGE_FRAMES_PER_VERIFY", 3),
             frames_per_enroll: env_usize("VISAGE_FRAMES_PER_ENROLL", 5),
