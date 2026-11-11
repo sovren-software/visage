@@ -143,6 +143,62 @@ service you want (`sudo`, `polkit-1`, `gdm-password`):
 auth        [success=done default=ignore]    pam_visage.so
 ```
 
+### Older x86_64 CPUs (without AVX2)
+
+The prebuilt ONNX Runtime distributed by `ort 2.0.0-rc.11`
+targets the `x86-64-v3` microarchitecture level and requires AVX2.
+
+On x86_64 processors without AVX2 (such as Intel Sandy Bridge
+and Ivy Bridge), the default Visage build may compile successfully
+but `visaged` can crash during ONNX Runtime initialization with
+`SIGILL` (illegal instruction).
+
+Setting Rust's `target-cpu` to an older architecture is not sufficient:
+the unsupported instructions are already present in the precompiled
+ONNX Runtime library.
+
+To run Visage on these CPUs, build ONNX Runtime 1.23.2 locally
+with a baseline x86-64 target.
+
+From the ONNX Runtime source directory:
+
+```bash
+./build.sh \
+  --config Release \
+  --skip_tests \
+  --parallel 4 \
+  --cmake_extra_defines \
+    onnxruntime_USE_AVX=OFF \
+    onnxruntime_USE_AVX2=OFF \
+    onnxruntime_USE_AVX512=OFF \
+    onnxruntime_BUILD_FOR_NATIVE_MACHINE=OFF \
+    onnxruntime_BUILD_SHARED_LIB=OFF \
+    CMAKE_C_FLAGS="-march=x86-64" \
+    CMAKE_CXX_FLAGS="-march=x86-64"
+```
+
+Then build Visage against this local ONNX Runtime:
+
+```bash
+export ORT_LIB_LOCATION="$HOME/onnxruntime/build/Linux/Release"
+export ORT_SKIP_DOWNLOAD=1
+
+RUSTFLAGS="-C target-cpu=ivybridge" \
+  cargo build --release --workspace
+```
+
+Adjust `ORT_LIB_LOCATION` to the actual ONNX Runtime build output
+directory if necessary.
+
+The local ONNX Runtime build may still contain AVX2/AVX512
+instructions in architecture-specific MLAS kernels. This is
+expected: MLAS selects optimized implementations at runtime.
+The important requirement is that generic initialization code
+must be compatible with the target CPU.
+
+This procedure was tested with an Intel Xeon E5-2609 v2 (Ivy Bridge),
+which supports AVX but does not support AVX2.
+
 ---
 
 ## First-Time Setup
