@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v0.5.0 — 2026-11-11
+
+The first release since v0.4.0. It clears eight RustSec advisories (seven in the TLS
+stack, one in the bundled SQLite), makes `/var/lib/visage` root-only on every package,
+and turns `pam_visage`'s `timeout=N` into a total budget with retries inside it. A
+verify now reads frames as they arrive on one camera stream and runs ArcFace only until
+the first match. New: a live enrollment view (`visage-enroll`), optional OpenVINO GPU
+inference, a face-wait window, and IR emitter quirks that need more than one control.
+The MSRV rises to 1.89.
+
 ### Security
 
 - **`/var/lib/visage` is now root-only on the AUR and RPM paths.** `faces.db` keeps
@@ -91,9 +101,25 @@
 
 ### Added
 
-- **`VISAGE_FACE_WAIT_MS`: keep looking for a face on the same stream.** A verify often
-  starts before the user is in front of the camera. `pam_visage` retries it until its
-  `timeout=N` budget runs out (#127), but every retry starts the camera stream again.
+- **IR emitter quirks with more than one control, and a quirk for the Lenovo IdeaPad
+  Pro 5 14IAH10 — Bison `5986:2174`** (#152, thanks @ozsydm). Some IR cameras need
+  several UVC extension-unit controls to light the emitter; this one needs an IR mode
+  select and then an LED power level. A quirk file can now list `[[emitter.controls]]`
+  (or an inline `controls = [...]`). The controls are set in order and cleared in
+  reverse; if one fails, the ones already set are rolled back, so the camera is not left
+  half lit. Single-control files work as before, and a file that mixes the two forms is
+  refused.
+
+- **Operations guide: running on x86_64 CPUs without AVX2** (#153, thanks @niawag). The
+  prebuilt ONNX Runtime that `ort` 2.0.0-rc.11 downloads needs AVX2, so on CPUs such as
+  Sandy Bridge and Ivy Bridge `visaged` can stop with `SIGILL` when ONNX Runtime starts.
+  The guide shows how to build ONNX Runtime 1.23.2 for baseline x86-64 and build Visage
+  against it.
+
+- **`VISAGE_FACE_WAIT_MS`: keep looking for a face on the same stream** (#145, thanks
+  @Yury-MonZon). A verify often starts before the user is in front of the camera.
+  `pam_visage` retries it until its `timeout=N` budget runs out (#127), but every retry
+  starts the camera stream again.
   With a window set, a verify that has seen no face keeps reading the stream, one group
   of `frames_per_verify` frames after another, until a face appears or the window ends.
   A face that is seen ends the verify as before, matched or not, so a request never
