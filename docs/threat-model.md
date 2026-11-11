@@ -82,7 +82,7 @@ The packaging step added systemic hardening beyond the core auth logic:
 | `CapabilityBoundingSet=` (empty) | All Linux capabilities dropped — root with no capabilities |
 | `DeviceAllow=char-video4linux rw` | Camera access is the only device permission |
 | `PrivateNetwork=true` | Own network namespace, loopback only — the daemon cannot reach the network |
-| `StateDirectory=visage`, `StateDirectoryMode=0700` | systemd creates `/var/lib/visage` root-only when it is missing. It does not change an existing directory, so each package's install script also sets 0700 (the 0.4.0 AUR package shipped it 0755, and the RPM never created it) |
+| `StateDirectory=visage`, `StateDirectoryMode=0700` | systemd creates `/var/lib/visage` root-only, and resets an existing directory to 0700 at every service start (seen on systemd 262). Each package's install script also sets 0700, so the directory is root-only before the first start (the 0.4.0 AUR package shipped it 0755, and the RPM never created it) |
 | `MemoryDenyWriteExecute=false` | Intentionally disabled — ONNX Runtime requires W+X for JIT |
 
 The `MemoryDenyWriteExecute=false` exception is the most significant hardening gap. It allows
