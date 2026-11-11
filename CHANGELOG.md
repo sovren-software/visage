@@ -11,7 +11,9 @@
   which makes only `models` 0700 and creates `/var/lib/visage` 0755; the RPM never created
   the directory at all. Both now create it 0700 and repair an existing one on upgrade or
   install. The shared unit also sets `StateDirectory=visage` with `StateDirectoryMode=0700`,
-  and `visaged` and `visage setup` create any missing directory 0700, for source installs.
+  which on systemd 262 also resets an existing directory to 0700 at the next start of
+  `visaged`, and `visaged` and `visage setup` create any missing directory 0700, for
+  source installs.
   `state_dir_mode_contract.rs` reads all four packaging formats so they cannot drift again.
 
   **Existing AUR and RPM installs:** `sudo chmod 700 /var/lib/visage`. The package upgrade

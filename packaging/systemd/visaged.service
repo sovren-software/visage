@@ -25,8 +25,9 @@ ProtectHome=true
 PrivateTmp=true
 DeviceAllow=char-video4linux rw
 ReadWritePaths=/var/lib/visage
-# Creates /var/lib/visage root-only when no package has. systemd leaves an
-# existing directory's mode alone, so the packages also set it.
+# Creates /var/lib/visage root-only, and resets an existing directory to 0700
+# at every start (seen on systemd 262). The packages also set it at install,
+# so the directory is root-only before the first start.
 StateDirectory=visage
 StateDirectoryMode=0700
 CapabilityBoundingSet=

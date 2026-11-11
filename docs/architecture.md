@@ -639,7 +639,7 @@ enforces the same checksums at startup (fail-closed). See [ADR 009](decisions/00
 | `PrivateTmp` | `true` | Isolated temp directory |
 | `DeviceAllow` | `char-video4linux rw` | Camera access (kernel device type — path globs don't work in cgroup v2) |
 | `ReadWritePaths` | `/var/lib/visage` | Database and model storage |
-| `StateDirectory` / `StateDirectoryMode` | `visage` / `0700` | Root-only state directory when systemd creates it (it does not change an existing one) |
+| `StateDirectory` / `StateDirectoryMode` | `visage` / `0700` | Root-only state directory; systemd also resets an existing one to 0700 at every start (seen on systemd 262) |
 | `MemoryDenyWriteExecute` | `false` | Required for ONNX Runtime JIT |
 
 ### D-Bus Access Control
