@@ -3701,6 +3701,7 @@ dependencies = [
  "aes-gcm",
  "anyhow",
  "chrono",
+ "futures-lite",
  "nix 0.31.3",
  "rand 0.9.5",
  "rusqlite",

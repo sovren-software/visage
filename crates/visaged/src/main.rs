@@ -8,6 +8,7 @@ mod config;
 mod db;
 mod dbus_interface;
 mod engine;
+mod orientation;
 mod rate_limiter;
 mod store;
 
@@ -66,11 +67,14 @@ async fn main() -> Result<()> {
     // 4. Register D-Bus service on system bus (or session bus in development mode).
     //    Set VISAGE_SESSION_BUS=1 to use the session bus without elevated privileges.
     let session_bus = config.session_bus;
+    let rotate_auto = config.rotate == orientation::RotateMode::Auto;
+    let device_rotation = orientation::DeviceRotation::default();
     let state = Arc::new(Mutex::new(AppState {
         config,
         engine,
         store,
         rate_limiter: RateLimiter::new(),
+        device_rotation: device_rotation.clone(),
     }));
 
     let service = VisageService { state };
@@ -84,6 +88,12 @@ async fn main() -> Result<()> {
     .serve_at("/org/freedesktop/Visage1", service)?
     .build()
     .await?;
+
+    // 5. Follow the device orientation, if asked to. iio-sensor-proxy is on the
+    //    system bus only.
+    if rotate_auto && !session_bus {
+        orientation::spawn_watcher(_conn.clone(), device_rotation);
+    }
 
     let bus_name = if session_bus { "session" } else { "system" };
     tracing::info!(

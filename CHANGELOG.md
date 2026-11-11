@@ -91,6 +91,18 @@
 
 ### Added
 
+- **`VISAGE_ROTATE`: faces on a device held upside down or sideways.** A camera in the
+  display bezel turns with the device, and SCRFD and ArcFace are not trained for turned
+  faces: held upside down, a ThinkPad X12 Detachable found a face in 2 of 102 frames and
+  matched it at 0.07. With `auto` the daemon claims the accelerometer through
+  iio-sensor-proxy once, follows its orientation, and turns every usable frame upright
+  before examining it (a claim per verify would add up to two seconds while the sensor
+  starts), so detection, the embedding and the liveness landmarks all see the face the
+  right way up. It reads the physical orientation, so a
+  screen rotation lock does not matter, and any failure means no rotation. A fixed `90`,
+  `180` or `270` is for a camera mounted turned. Off by default; `services.visage.rotate`
+  on NixOS; `rotation_deg` in the timing line.
+
 - **`VISAGE_FACE_WAIT_MS`: keep looking for a face on the same stream.** A verify often
   starts before the user is in front of the camera. `pam_visage` retries it until its
   `timeout=N` budget runs out (#127), but every retry starts the camera stream again.
