@@ -35,6 +35,12 @@ pub trait Visage {
     /// Remove one of `user`'s models by id. Root-only.
     async fn remove_model(&self, user: &str, model_id: &str) -> zbus::fdo::Result<bool>;
 
+    /// Recent authentication attempts (newest first) as JSON. Root-only.
+    ///
+    /// `limit` caps rows (1-500, default 50 server-side). Empty `user` means
+    /// all users. Text-only: no images, no embeddings.
+    async fn history(&self, user: &str, limit: u32) -> zbus::fdo::Result<String>;
+
     /// A downscaled camera frame, sent only to the caller whose `enroll` is
     /// currently running.
     ///

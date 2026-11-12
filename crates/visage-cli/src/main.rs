@@ -81,6 +81,17 @@ enum Commands {
     },
     /// Show daemon status
     Status,
+    /// Recent authentication attempts (newest first). Root-only.
+    History {
+        /// User to filter by. Defaults to the invoking user — SUDO_USER under sudo, NOT root.
+        /// Pass an empty string explicitly to see all users.
+        #[arg(short, long)]
+        user: Option<String>,
+
+        /// Max rows to show (1-500).
+        #[arg(short, long, default_value = "20")]
+        limit: u32,
+    },
     /// List cameras and their IR emitter quirk status
     Discover,
     /// Run camera diagnostics
@@ -417,6 +428,39 @@ async fn main() -> Result<()> {
                 Err(e) => {
                     eprintln!("visaged: not reachable — {e}");
                     eprintln!("Is visaged running?");
+                    std::process::exit(1);
+                }
+            }
+        }
+        Commands::History { user, limit } => {
+            let user = user.unwrap_or_else(current_user);
+            let proxy = connect_proxy().await?;
+            match proxy.history(&user, limit).await {
+                Ok(json) => {
+                    let attempts: Vec<serde_json::Value> = serde_json::from_str(&json)?;
+                    if attempts.is_empty() {
+                        println!("No authentication attempts recorded for user '{user}'");
+                    } else {
+                        println!("Recent logins for '{user}' (newest first):");
+                        for a in &attempts {
+                            let mark = if a["matched"].as_bool().unwrap_or(false) {
+                                "✓"
+                            } else {
+                                "✗"
+                            };
+                            println!(
+                                "  {} {}  sim={:.3}  reason={}  model={}",
+                                mark,
+                                a["created_at"].as_str().unwrap_or("?"),
+                                a["similarity"].as_f64().unwrap_or(0.0),
+                                a["reason"].as_str().unwrap_or("?"),
+                                a["model_label"].as_str().unwrap_or("-"),
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to fetch history: {e}");
                     std::process::exit(1);
                 }
             }
