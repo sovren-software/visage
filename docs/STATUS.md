@@ -1,17 +1,25 @@
 # Visage Release Status
 
-**Last updated:** 2026-09-16
-**Build state:** **v0.4.0 shipped 2026-09-16.** It added `PreviewFrame` — the daemon can
-show an enrolling client what the camera sees (unicast, enrollment-scoped, downscaled to
-160px on the longest edge) — a POSIX-sh pre-install hardware check with a contract test
-against the quirk database, `visage onboard` documented in five files that had never
-mentioned it, a Fedora install section, and changelog entries for eleven merged PRs that
-had none. The quirk table grew from 2 rows to 6.
+**Last updated:** 2026-11-13
+**Build state:** **v0.5.0 shipped 2026-11-11** (GitHub release with the `.deb`). It clears
+eight RustSec advisories, makes `/var/lib/visage` root-only on every package, turns
+`pam_visage`'s `timeout=N` into a total budget with retries inside it, reads frames as they
+arrive on one camera stream, and adds `visage-enroll`, optional OpenVINO inference, a
+face-wait window and multi-control IR emitter quirks. MSRV 1.89. Running on the reference
+machine (ASUS Zenbook 14 UM3406HA, Shinetech `3277:0055`) since 2026-11-11.
 
-**Unreleased:** a framing phase before each capture (`VISAGE_FRAMING_MS`, default 1500,
-`0` disables), one shared D-Bus proxy in `visage-ipc`, and **`visage-enroll`** — a
-terminal enrollment front-end that shows you the camera live. It now ships in the `.deb`,
-RPM and AUR packages. See the Unreleased section of [`../CHANGELOG.md`](../CHANGELOG.md).
+**Unreleased:** `visage stats` (#159) — the share of login attempts that unlock, why the
+others fail, by hour of day, and the time to unlock, read from one `visage-auth-outcome v1`
+line the daemon now logs per `Verify`. See [`../CHANGELOG.md`](../CHANGELOG.md).
+
+📏 **Measured reliability baseline (before `visage stats`, read by hand).** Four weeks of
+journal on the reference machine under 0.4.0 (2026-10-16 to 11-11): 95 verifies, 59
+matched, 1 face that did not match, 18 failed on dark frames only and 17 found no face.
+That is **about 62% success**, against the >95% goal in the
+[Howdy analysis](research/howdy-analysis-and-visage-design.md). Failures ran at 50%
+before 13:00 and 24% after. One candidate cause is #124: in daylight, the unlit half of
+the IR strobe passes the dark-frame test. Under 0.5.0, 7 of 7 verifies matched by
+2026-11-13. That is too few to conclude anything, which is what `visage stats` is for.
 
 ✅ **Hardware-validated 2026-09-16** on the-first (Shinetech `3277:0055`): 4 of 4 angles
 enrolled through `visage-enroll`, best-face confidence 0.8657, the preview legible at the

@@ -61,6 +61,27 @@ This ADR documents the session that resolved both blockers and the decisions mad
 - CPU-only v2: no GPU acceleration. Target auth latency ~60-80ms total is acceptable
   for a PAM auth prompt where the user expects a brief pause
 
+> **Amendment, 2026-11-13: the latency figures above did not hold on the reference
+> machine.** Measured from the `verify timing` line `visaged` 0.5.0 logs for every
+> verify, on an ASUS Zenbook 14 UM3406HA (Ryzen 7 8840HS, IR camera 640×360 GREY,
+> `cpu_threads=2` by default), 7 verifies from 2026-11-11 to 11-13:
+>
+> | Stage | Assumed here | Measured (per call, median and range) |
+> |---|---|---|
+> | SCRFD det_10g | ~20-30ms | **213 ms** (141–489 ms), 3 detections per verify |
+> | ArcFace w600k_r50 | ~15-20ms | **114 ms** (49–160 ms), 1–2 extractions per verify |
+> | Whole verify | ~60-80ms | **1,020 ms** (750–2,087 ms), including ~300 ms of capture |
+>
+> The two slowest verifies were the first two after the daemon started. Every verify
+> also skipped 2–3 dark frames, which is consistent with the IR strobe in #124.
+>
+> So the reason given for rejecting `det_500m` ("we can afford 20ms") does not hold:
+> detection is the largest single cost of a verify. The choice is **not re-decided**
+> here. det_500m has lower recall, and a missed face costs a retry (200 ms) or a failed
+> login. Deciding needs a benchmark on real frames from this camera that measures speed,
+> face recall and the effect on match rate. The thread count, OpenVINO and the 640 input
+> size are other levers to measure in that benchmark.
+
 ---
 
 ### 2. 4-DOF Similarity Transform (Not Full Affine) for Face Alignment
