@@ -104,7 +104,7 @@ impl TryFrom<RawEmitterInfo> for EmitterInfo {
             );
         }
 
-        if has_single {
+        let controls = if has_single {
             let unit = raw.unit.ok_or_else(|| "missing field `unit`".to_string())?;
             let selector = raw
                 .selector
@@ -114,30 +114,41 @@ impl TryFrom<RawEmitterInfo> for EmitterInfo {
                 .ok_or_else(|| "missing field `control_bytes`".to_string())?;
             let off_bytes = raw.off_bytes;
 
-            Ok(Self {
-                controls: vec![EmitterControl {
-                    unit,
-                    selector,
-                    control_bytes,
-                    off_bytes,
-                }],
-                reset_on_close: raw.reset_on_close,
-            })
+            vec![EmitterControl {
+                unit,
+                selector,
+                control_bytes,
+                off_bytes,
+            }]
         } else if has_multi {
             let controls = raw.controls.unwrap();
             if controls.is_empty() {
                 return Err("emitter `controls` list cannot be empty".to_string());
             }
-            Ok(Self {
-                controls,
-                reset_on_close: raw.reset_on_close,
-            })
+            controls
         } else {
-            Err(
+            return Err(
                 "emitter must specify either single-control fields (unit, selector, control_bytes) or a `controls` list"
                     .to_string(),
-            )
+            );
+        };
+
+        for (idx, ctrl) in controls.iter().enumerate() {
+            if let Some(ref off) = ctrl.off_bytes {
+                if off.len() != ctrl.control_bytes.len() {
+                    return Err(format!(
+                        "emitter control [{idx}] off_bytes length ({}) must match control_bytes length ({})",
+                        off.len(),
+                        ctrl.control_bytes.len()
+                    ));
+                }
+            }
         }
+
+        Ok(Self {
+            controls,
+            reset_on_close: raw.reset_on_close,
+        })
     }
 }
 
@@ -465,6 +476,59 @@ mod tests {
         assert!(
             err_msg.contains("cannot be empty"),
             "expected 'cannot be empty' in error, got: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn test_refuse_mismatched_off_bytes_single() {
+        let toml_src = r#"
+            [device]
+            vendor_id = 0x1234
+            product_id = 0x5678
+            name = "Test Camera Mismatched Single"
+
+            [emitter]
+            unit = 7
+            selector = 6
+            control_bytes = [1, 2, 3]
+            off_bytes = [1, 2]
+        "#;
+        let res = toml::from_str::<QuirkFile>(toml_src);
+        assert!(
+            res.is_err(),
+            "emitter with mismatched off_bytes length must be refused at parse time"
+        );
+        let err_msg = res.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("off_bytes length (2) must match control_bytes length (3)"),
+            "unexpected error message: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn test_refuse_mismatched_off_bytes_multi() {
+        let toml_src = r#"
+            [device]
+            vendor_id = 0x1234
+            product_id = 0x5678
+            name = "Test Camera Mismatched Multi"
+
+            [emitter]
+            [[emitter.controls]]
+            unit = 7
+            selector = 6
+            control_bytes = [1, 2, 3]
+            off_bytes = [1, 2, 3, 4]
+        "#;
+        let res = toml::from_str::<QuirkFile>(toml_src);
+        assert!(
+            res.is_err(),
+            "emitter control with mismatched off_bytes length must be refused at parse time"
+        );
+        let err_msg = res.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("off_bytes length (4) must match control_bytes length (3)"),
+            "unexpected error message: {err_msg}"
         );
     }
 }
