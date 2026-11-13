@@ -337,7 +337,8 @@ sudo visage stats
 ### How often face unlock works
 
 `sudo visage stats` reads the daemon's journal and reports the share of login attempts
-that unlocked, why the others failed, attempts by hour of day, and the time to unlock.
+that unlocked, why the others failed, attempts by hour of day, the time to unlock, and how
+many unlocks needed one of `pam_visage`'s retries.
 Example output (the numbers are made up):
 
 ```
@@ -347,6 +348,7 @@ Outcomes logged from 2026-11-12 08:02 to 2026-11-13 18:41
   Login attempts     41   succeeded 37 (90%)
   Verify calls       58   (calls under 3 s apart are one attempt)
   Time to unlock          median 1.0 s, p90 2.4 s
+  Unlocked on a retry     5 of 37
 
 Failed attempts by cause
   only dark frames            2

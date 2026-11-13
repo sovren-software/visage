@@ -6,7 +6,8 @@
 
 - **`visage stats` — how often face unlock works on this machine.** It reads the
   daemon's journal and reports the share of login attempts that unlocked, the cause of
-  each failed attempt, attempts by hour of day, and the median and p90 time to unlock.
+  each failed attempt, attempts by hour of day, the median and p90 time to unlock, and
+  how many unlocks needed one of `pam_visage`'s retries.
   `--json` prints the same numbers for a reliability report, and a new issue template
   asks for them. Nothing measured this before: on our own ASUS Zenbook 14 UM3406HA
   (Shinetech `3277:0055`, v0.4.0) four weeks of logs showed about one face attempt in

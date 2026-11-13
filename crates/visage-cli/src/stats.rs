@@ -155,6 +155,9 @@ pub struct Report {
     /// Start of the first call to end of the last, for succeeded attempts.
     pub unlock_median: Option<Duration>,
     pub unlock_p90: Option<Duration>,
+    /// Succeeded attempts that took more than one call: the unlocks that
+    /// `pam_visage`'s retries rescued.
+    pub unlocked_on_retry: usize,
     /// Calls refused before the camera ran, by outcome.
     pub refused: BTreeMap<Outcome, usize>,
 }
@@ -165,12 +168,16 @@ pub fn build_report(calls: &[Call], days: u32) -> Report {
     let mut failed = BTreeMap::new();
     let mut by_hour: BTreeMap<u32, (usize, usize)> = BTreeMap::new();
     let mut unlock: Vec<Duration> = Vec::new();
+    let mut unlocked_on_retry = 0;
     for a in &attempts {
         let hour = by_hour.entry(a.start.hour()).or_default();
         hour.0 += 1;
         if a.succeeded() {
             hour.1 += 1;
             unlock.push((a.end - a.start).to_std().unwrap_or_default());
+            if a.calls > 1 {
+                unlocked_on_retry += 1;
+            }
         } else {
             *failed.entry(a.outcome).or_default() += 1;
         }
@@ -193,6 +200,7 @@ pub fn build_report(calls: &[Call], days: u32) -> Report {
         by_hour,
         unlock_median: percentile(&unlock, 50),
         unlock_p90: percentile(&unlock, 90),
+        unlocked_on_retry,
         refused,
     }
 }
@@ -249,6 +257,12 @@ pub fn render_text(r: &Report) -> String {
                 "  Time to unlock          median {}, p90 {}\n",
                 secs(median),
                 secs(p90)
+            ));
+        }
+        if r.succeeded > 0 {
+            out.push_str(&format!(
+                "  Unlocked on a retry     {} of {}\n",
+                r.unlocked_on_retry, r.succeeded
             ));
         }
 
@@ -312,6 +326,7 @@ pub fn render_json(r: &Report) -> serde_json::Value {
         "attempt_gap_ms": ATTEMPT_GAP.as_millis() as u64,
         "failed_attempts": names(&r.failed),
         "by_hour": by_hour,
+        "unlocked_on_retry": r.unlocked_on_retry,
         "unlock_ms": {
             "median": r.unlock_median.map(|d| d.as_millis() as u64),
             "p90": r.unlock_p90.map(|d| d.as_millis() as u64),
@@ -508,6 +523,11 @@ mod tests {
         assert_eq!(report.attempts, 1);
         assert_eq!(report.succeeded, 1);
         assert_eq!(report.refused.get(&Outcome::RateLimited), Some(&1));
+        assert_eq!(
+            report.unlocked_on_retry, 1,
+            "the match came on the second call"
+        );
+        assert!(render_text(&report).contains("Unlocked on a retry     1 of 1"));
     }
 
     #[test]
@@ -548,6 +568,10 @@ mod tests {
         assert_eq!(json["failed_attempts"]["dark_frames"], 1);
         assert_eq!(json["by_hour"]["08"]["attempts"], 3);
         assert_eq!(json["unlock_ms"]["p90"], 2000);
+        assert_eq!(
+            json["unlocked_on_retry"], 0,
+            "every unlock here took one call"
+        );
     }
 
     #[test]
