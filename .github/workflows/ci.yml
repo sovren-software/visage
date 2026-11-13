@@ -108,17 +108,31 @@ jobs:
         # to the same version locally and in CI that day — by luck, not design.
         run: cargo install cargo-deb --version 3.7.0 --locked
 
+      - name: Install cargo-generate-rpm
+        # Pinned for the same reason as cargo-deb.
+        run: cargo install cargo-generate-rpm --version 0.21.1 --locked
+
       - name: Build release
         run: cargo build --release --workspace
 
       - name: Build .deb package
         run: cargo deb -p visaged
 
+      - name: Build .rpm package
+        run: cargo generate-rpm -p crates/visaged
+
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v7
         with:
           name: visage-deb
           path: target/debian/visage_*.deb
+
+      - name: Upload .rpm artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: visage-rpm
+          path: target/generate-rpm/visage-*.rpm
+          if-no-files-found: error
 
   release:
     runs-on: ubuntu-24.04
@@ -135,13 +149,17 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v7
 
-      - name: Download .deb artifact
+      - name: Download .deb and .rpm artifacts
         uses: actions/download-artifact@v8
         with:
-          name: visage-deb
+          pattern: visage-*
+          merge-multiple: true
 
       - name: Resolve version and verify it matches the tag
         id: version
@@ -194,9 +212,34 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Visage v${{ steps.version.outputs.version }}
           body_path: RELEASE_NOTES.md
-          files: visage_*.deb
+          files: |
+            visage_*.deb
+            visage-*.rpm
           draft: false
           prerelease: ${{ steps.version.outputs.prerelease }}
+
+  # APT and DNF repositories on GitHub Pages, built by ziptie-soft/pkg-pages from this
+  # run's .deb and .rpm plus the packages of earlier releases. Unsigned for now: no
+  # public-key pin is committed and no signing secret is passed. Needs Pages enabled
+  # with "GitHub Actions" as the source.
+  # See https://github.com/ziptie-soft/pkg-pages/blob/master/docs/actions.md#publish-reusable-workflow
+  packages:
+    needs: release
+    if: needs.release.outputs.prerelease == 'false'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ziptie-soft/pkg-pages/.github/workflows/publish.yml@13ebc668a953ac090ded52ef7a63a14ecda051aa # v1.1.1
+    with:
+      version: ${{ needs.release.outputs.version }}
+      tag: ${{ github.ref_name }}
+      deb-artifacts: visage-deb
+      rpm-artifacts: visage-rpm
+      name: visage
+      description: Visage biometric (face) authentication for Linux
+      signing-environment: ''
+      smoke: visage --help > /dev/null
 
   clippy-latest:
     # Non-blocking early warning for toolchain drift.
