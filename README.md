@@ -27,17 +27,18 @@ Linux-PAM — no kernel patches, no modified sudo.
 
 ## Status
 
-**v0.4.0 — feature-complete, running on real hardware.**
+**v0.5.0 — feature-complete, running on real hardware.**
 
 Enrollment, verification, PAM integration for `sudo` and lock screens, systemd hardening,
 D-Bus access control, package lifecycle and suspend/resume are implemented and tested end
 to end. **`sudo visage onboard`** takes a fresh machine to working face auth in one command.
 
-Since v0.3.6: one-command onboarding, the first hardware validation of passive liveness, a
-configurable PAM timeout, the first integration tests, Fedora RPM packaging, and three more
-IR emitter quirks. v0.4.0 added `PreviewFrame`, so an enrolling client can show you what the
-camera sees, and a pre-install hardware check you can run before installing anything. See
-[CHANGELOG](CHANGELOG.md) for the full history.
+v0.5.0 clears eight RustSec advisories, makes `/var/lib/visage` root-only on every package,
+makes `pam_visage`'s `timeout=N` a total budget with retries inside it, reads frames as they
+arrive on one camera stream, and adds `visage-enroll` (enrollment with a live camera view),
+optional OpenVINO inference and IR emitter quirks that need more than one control. v0.4.0
+added `PreviewFrame` and a pre-install hardware check. See [CHANGELOG](CHANGELOG.md) for the
+full history.
 
 > ⚠️ **Keep a password fallback. Do not make this your only authentication factor yet.**
 > On its first hardware spoof validation, passive liveness did **not** discriminate: a
