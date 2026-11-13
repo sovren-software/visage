@@ -1,4 +1,5 @@
 mod setup;
+mod stats;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -81,6 +82,20 @@ enum Commands {
     },
     /// Show daemon status
     Status,
+    /// How often face unlock worked on this machine, read from the journal.
+    ///
+    /// Groups pam_visage's retries into login attempts and reports the success
+    /// rate, the cause of each failed attempt, attempts by hour of day and the
+    /// time to unlock. Reading the system journal needs root: `sudo visage stats`.
+    Stats {
+        /// How many days back to read.
+        #[arg(long, default_value = "28")]
+        days: u32,
+
+        /// Print JSON, for a reliability report.
+        #[arg(long)]
+        json: bool,
+    },
     /// List cameras and their IR emitter quirk status
     Discover,
     /// Run camera diagnostics
@@ -372,6 +387,9 @@ async fn main() -> Result<()> {
         }
         Commands::Discover => {
             cmd_discover();
+        }
+        Commands::Stats { days, json } => {
+            stats::run(days, json)?;
         }
         Commands::Status => {
             let proxy = connect_proxy().await?;

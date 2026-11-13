@@ -17,6 +17,7 @@ path = "src/main.rs"
 visage-core = { path = "../visage-core" }
 visage-hw = { path = "../visage-hw" }
 visage-models = { path = "../visage-models" }
+visage-ipc = { path = "../visage-ipc" }
 tokio = { workspace = true }
 zbus = { workspace = true }
 tracing = { workspace = true }

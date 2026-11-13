@@ -329,7 +329,57 @@ visage status
 
 # Remove a specific model
 sudo visage remove <model-id>    # UUID from visage list
+
+# How often face unlock worked in the last 28 days
+sudo visage stats
 ```
+
+### How often face unlock works
+
+`sudo visage stats` reads the daemon's journal and reports the share of login attempts
+that unlocked, why the others failed, attempts by hour of day, and the time to unlock.
+Example output (the numbers are made up):
+
+```
+Face unlock on this machine, last 28 days
+Outcomes logged from 2026-11-12 08:02 to 2026-11-13 18:41
+
+  Login attempts     41   succeeded 37 (90%)
+  Verify calls       58   (calls under 3 s apart are one attempt)
+  Time to unlock          median 1.0 s, p90 2.4 s
+
+Failed attempts by cause
+  only dark frames            2
+  no face found               2
+
+By hour of day (local)   attempts  succeeded
+  08:00                         6          4
+  ...
+```
+
+A verify call is not a login attempt. `pam_visage` retries inside its `timeout=N` budget
+(200 ms after "no face" or dark frames, 1.5 s after a face that did not match), so one sudo
+can make several daemon calls and still unlock. `visage stats` counts calls less than 3 s
+apart as one attempt, and names a failed attempt by the most telling thing it saw: a face
+that did not match, then a failed liveness check, then dark frames, then no face, then an
+error. Calls refused before the camera ran (rate limited, caller denied, no enrolled
+models) are listed apart and do not count toward the success rate.
+
+- `--days N` reads a different window. The journal's own retention limits how far back
+  this can go.
+- `--json` prints the same numbers for a reliability report.
+- It needs root, or membership in `systemd-journal`, because the daemon's journal is the
+  system journal.
+- It counts only what a `visaged` newer than 0.5.0 logged: each `Verify` call ends with
+  one `visage-auth-outcome v1` line, which is what it reads. An older daemon's journal
+  has nothing to count.
+
+If the success rate is low, the cause column says where to look: dark frames point at the
+IR emitter (see [IR emitter support](#ir-emitter-support) and `visage test`), "no face"
+at framing or a strobe frame without IR light, "did not match" at enrollment (enroll
+again in the light you usually work in). A
+[reliability report](https://github.com/sovren-software/visage/issues/new?template=reliability_report.md)
+with `sudo visage stats --json` attached helps us see which hardware needs work.
 
 ---
 

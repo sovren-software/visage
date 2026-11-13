@@ -12,6 +12,11 @@
 //!
 //! `crates/visaged/tests/dbus_contract.rs` checks this file against the
 //! daemon's interface. One definition, one place the contract test looks.
+//!
+//! [`outcome`] holds the second daemon–client contract: the line `visaged`
+//! logs when a `Verify` ends, which `visage stats` reads back from the journal.
+
+pub mod outcome;
 
 /// The Visage daemon's D-Bus interface, from a client's point of view.
 #[zbus::proxy(

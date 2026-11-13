@@ -3626,6 +3626,7 @@ name = "visage-cli"
 version = "0.5.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "image",
  "libc",
@@ -3713,6 +3714,7 @@ dependencies = [
  "uuid",
  "visage-core",
  "visage-hw",
+ "visage-ipc",
  "visage-models",
  "zbus",
 ]

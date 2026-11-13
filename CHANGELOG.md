@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+### Added
+
+- **`visage stats` — how often face unlock works on this machine.** It reads the
+  daemon's journal and reports the share of login attempts that unlocked, the cause of
+  each failed attempt, attempts by hour of day, and the median and p90 time to unlock.
+  `--json` prints the same numbers for a reliability report, and a new issue template
+  asks for them. Nothing measured this before: on our own ASUS Zenbook 14 UM3406HA
+  (Shinetech `3277:0055`, v0.4.0) four weeks of logs showed about one face attempt in
+  three failing, twice as often in the morning as in the afternoon, and nobody had
+  noticed until the journal was read by hand.
+
+  `pam_visage` retries inside its `timeout=N` budget (#127), so one sudo can make several
+  daemon calls and still unlock. Calls less than 3 s apart count as one attempt, so the
+  retries do not show up as failed logins. Calls refused before the camera ran (rate
+  limited, caller denied, no enrolled models) are listed apart.
+
+  The source is one new log line: every `Verify` call now ends with exactly one
+  `visage-auth-outcome v1 outcome=<class> ms=<n>` line, with the similarity when a face
+  was compared. It has no username in it, because the caller chooses that argument. The
+  format lives once in `visage-ipc`, beside the D-Bus proxy, and the daemon writes it
+  from a single place that every exit of `Verify` passes through.
+
+### Changed
+
+- **`visaged` no longer writes ANSI colour codes into the journal.** Colour is on only
+  when stdout is a terminal. Under systemd the codes arrived as raw escape bytes, so
+  `journalctl -o json` printed every message as a byte array.
+
 ## v0.5.0 — 2026-11-11
 
 The first release since v0.4.0. It clears eight RustSec advisories (seven in the TLS
