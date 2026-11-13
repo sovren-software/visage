@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## v0.5.1 — 2026-11-13
+
+Adds `visage stats`, which reports how often face unlock works on this machine and why
+it fails. The daemon now logs one `visage-auth-outcome v1` line per `Verify` call, and
+the report reads those lines from the journal, so it counts only what a 0.5.1 or newer
+daemon logged. `visaged` also stops writing colour codes into the journal.
+
 ### Added
 
 - **`visage stats` — how often face unlock works on this machine.** It reads the

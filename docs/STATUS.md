@@ -1,16 +1,18 @@
 # Visage Release Status
 
 **Last updated:** 2026-11-13
-**Build state:** **v0.5.0 shipped 2026-11-11** (GitHub release with the `.deb`). It clears
+**Build state:** **v0.5.1 released 2026-11-13.** It adds `visage stats` (#159): the share of
+login attempts that unlock, why the others fail, by hour of day, and the time to unlock,
+read from one `visage-auth-outcome v1` line the daemon now logs per `Verify`.
+
+**v0.5.0 shipped 2026-11-11** (GitHub release with the `.deb`). It clears
 eight RustSec advisories, makes `/var/lib/visage` root-only on every package, turns
 `pam_visage`'s `timeout=N` into a total budget with retries inside it, reads frames as they
 arrive on one camera stream, and adds `visage-enroll`, optional OpenVINO inference, a
-face-wait window and multi-control IR emitter quirks. MSRV 1.89. Running on the reference
-machine (ASUS Zenbook 14 UM3406HA, Shinetech `3277:0055`) since 2026-11-11.
+face-wait window and multi-control IR emitter quirks. MSRV 1.89. The reference machine
+(ASUS Zenbook 14 UM3406HA, Shinetech `3277:0055`) runs v0.5.0 since 2026-11-11.
 
-**Unreleased:** `visage stats` (#159) — the share of login attempts that unlock, why the
-others fail, by hour of day, and the time to unlock, read from one `visage-auth-outcome v1`
-line the daemon now logs per `Verify`. See [`../CHANGELOG.md`](../CHANGELOG.md).
+**Unreleased:** nothing yet. See [`../CHANGELOG.md`](../CHANGELOG.md).
 
 📏 **Measured reliability baseline (before `visage stats`, read by hand).** Four weeks of
 journal on the reference machine under 0.4.0 (2026-10-16 to 11-11): 95 verifies, 59

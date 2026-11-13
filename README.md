@@ -27,16 +27,18 @@ Linux-PAM — no kernel patches, no modified sudo.
 
 ## Status
 
-**v0.5.0 — feature-complete, running on real hardware.**
+**v0.5.1 — feature-complete, running on real hardware.**
 
 Enrollment, verification, PAM integration for `sudo` and lock screens, systemd hardening,
 D-Bus access control, package lifecycle and suspend/resume are implemented and tested end
 to end. **`sudo visage onboard`** takes a fresh machine to working face auth in one command.
 
-v0.5.0 clears eight RustSec advisories, makes `/var/lib/visage` root-only on every package,
-makes `pam_visage`'s `timeout=N` a total budget with retries inside it, reads frames as they
-arrive on one camera stream, and adds `visage-enroll` (enrollment with a live camera view),
-optional OpenVINO inference and IR emitter quirks that need more than one control. v0.4.0
+v0.5.1 adds `visage stats`, which reports how often face unlock works on your machine and
+why it fails. v0.5.0 clears eight RustSec advisories, makes `/var/lib/visage` root-only on
+every package, makes `pam_visage`'s `timeout=N` a total budget with retries inside it,
+reads frames as they arrive on one camera stream, and adds `visage-enroll` (enrollment with
+a live camera view), optional OpenVINO inference and IR emitter quirks that need more than
+one control. v0.4.0
 added `PreviewFrame` and a pre-install hardware check. See [CHANGELOG](CHANGELOG.md) for the
 full history.
 
