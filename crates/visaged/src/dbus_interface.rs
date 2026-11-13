@@ -1,6 +1,7 @@
 use nix::unistd::User;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
+use visage_ipc::outcome::{self, Outcome};
 use zbus::interface;
 use zbus::object_server::SignalEmitter;
 
@@ -231,6 +232,11 @@ impl VisageService {
     /// Security: on the system bus the caller UID is validated against the target
     /// username before any camera access or rate-limit check.  Root (UID 0) is always
     /// permitted.  On the session bus (development mode) UID validation is skipped.
+    ///
+    /// Every call ends with exactly one `visage-auth-outcome v1` line in the log,
+    /// which `visage stats` reads back. The body lives in [`Self::verify_inner`],
+    /// which returns the outcome on every path, so the line is written once per
+    /// call by construction rather than by remembering it at each `return`.
     async fn verify(
         &self,
         user: &str,
@@ -238,144 +244,19 @@ impl VisageService {
         #[zbus(connection)] conn: &zbus::Connection,
     ) -> zbus::fdo::Result<bool> {
         tracing::info!(user, "verify requested");
+        let started = std::time::Instant::now();
 
-        // Read session_bus flag without holding lock across the async UID lookup
-        let session_bus = self.state.lock().await.config.session_bus;
-
-        // --- UID validation (system bus only) ---
-        if !session_bus {
-            let sender = header
-                .sender()
-                .ok_or_else(|| zbus::fdo::Error::Failed("no sender in message".to_string()))?;
-            let caller_uid = get_caller_uid(sender.as_str(), conn).await?;
-            if caller_uid != 0 {
-                match uid_for_name(user) {
-                    Some(expected_uid) if caller_uid == expected_uid => {}
-                    Some(_) => {
-                        tracing::warn!(
-                            user,
-                            caller_uid,
-                            "verify: caller UID does not match target user UID"
-                        );
-                        return Err(zbus::fdo::Error::AccessDenied(format!(
-                            "caller is not permitted to verify user '{user}'"
-                        )));
-                    }
-                    None => {
-                        tracing::warn!(user, "verify: unknown user");
-                        return Err(zbus::fdo::Error::Failed(format!("unknown user '{user}'")));
-                    }
-                }
+        let (outcome, similarity, reply) = match self.verify_inner(user, &header, conn).await {
+            Ok((outcome, similarity)) => {
+                (outcome, Some(similarity), Ok(outcome == Outcome::Matched))
             }
-        }
-
-        // --- Rate limit check ---
-        {
-            let mut state = self.state.lock().await;
-            state.rate_limiter.check(user).map_err(|msg| {
-                tracing::warn!(user, "verify: rate limited");
-                zbus::fdo::Error::Failed(msg)
-            })?;
-        }
-
-        // --- Fetch gallery and config (release lock before engine call) ---
-        let (
-            engine,
-            gallery,
-            threshold,
-            frames_count,
-            timeout_secs,
-            face_wait,
-            liveness_enabled,
-            liveness_min_displacement,
-        ) = {
-            let state = self.state.lock().await;
-            let gallery = state.store.get_gallery_for_user(user).await.map_err(|e| {
-                tracing::error!(error = %e, "verify: gallery fetch failed");
-                zbus::fdo::Error::Failed(e.to_string())
-            })?;
-            (
-                state.engine.clone(),
-                gallery,
-                state.config.similarity_threshold,
-                state.config.frames_per_verify,
-                state.config.verify_timeout_secs,
-                state.config.face_wait,
-                state.config.liveness_enabled,
-                state.config.liveness_min_displacement,
-            )
+            Err((outcome, error)) => (outcome, None, Err(error)),
         };
-
-        if gallery.is_empty() {
-            tracing::warn!(user, "verify: no enrolled models");
-            return Err(zbus::fdo::Error::Failed(format!(
-                "no enrolled models for user '{user}'"
-            )));
-        }
-
-        // --- Run engine with timeout (no lock held) ---
-        // Runtime errors (camera failure, timeout) are returned as Err and do NOT count
-        // as rate-limit failures. Liveness failures are treated as deliberate auth failures
-        // and converted to non-match so they are rate-limited like other failed attempts.
-        let timeout = std::time::Duration::from_secs(timeout_secs);
-        let result = match engine
-            .verify(
-                gallery,
-                threshold,
-                frames_count,
-                timeout,
-                face_wait,
-                liveness_enabled,
-                liveness_min_displacement,
-            )
-            .await
-        {
-            Ok(result) => result,
-            Err(EngineError::LivenessCheckFailed {
-                displacement,
-                threshold,
-            }) => {
-                tracing::warn!(
-                    user,
-                    displacement,
-                    threshold,
-                    "verify: liveness check failed — treating as non-match"
-                );
-                crate::engine::VerifyResult {
-                    result: visage_core::MatchResult {
-                        matched: false,
-                        similarity: 0.0,
-                        model_id: None,
-                        model_label: None,
-                    },
-                    best_quality: 0.0,
-                }
-            }
-            Err(e) => {
-                tracing::error!(error = %e, "verify failed");
-                return Err(zbus::fdo::Error::Failed(e.to_string()));
-            }
-        };
-
-        // --- Record rate-limit outcome ---
-        {
-            let mut state = self.state.lock().await;
-            if result.result.matched {
-                state.rate_limiter.record_success(user);
-            } else {
-                state.rate_limiter.record_failure(user);
-            }
-        }
-
         tracing::info!(
-            user,
-            matched = result.result.matched,
-            similarity = result.result.similarity,
-            model_id = ?result.result.model_id,
-            "verify complete"
+            "{}",
+            outcome::format_line(outcome, started.elapsed(), similarity)
         );
-
-        Ok(result.result.matched)
+        reply
     }
 
     /// Return daemon status information as JSON.
@@ -449,6 +330,248 @@ impl VisageService {
             tracing::warn!(model_id, user, "model not found or not owned by user");
         }
         Ok(removed)
+    }
+}
+
+/// How a `Verify` was refused or failed: the outcome for the log line, and
+/// the error for the caller.
+type Refusal = (Outcome, zbus::fdo::Error);
+
+impl VisageService {
+    /// The body of `Verify`. Not exported over D-Bus.
+    ///
+    /// Returns the outcome on every path. On success it is `Matched`,
+    /// `NotMatched` or `LivenessFailed`, with the similarity; the caller
+    /// replies `true` only for `Matched`.
+    async fn verify_inner(
+        &self,
+        user: &str,
+        header: &zbus::message::Header<'_>,
+        conn: &zbus::Connection,
+    ) -> Result<(Outcome, f32), Refusal> {
+        // Read session_bus flag without holding lock across the async UID lookup
+        let session_bus = self.state.lock().await.config.session_bus;
+
+        // --- UID validation (system bus only) ---
+        if !session_bus {
+            let sender = header.sender().ok_or_else(|| {
+                (
+                    Outcome::Denied,
+                    zbus::fdo::Error::Failed("no sender in message".to_string()),
+                )
+            })?;
+            let caller_uid = get_caller_uid(sender.as_str(), conn)
+                .await
+                .map_err(|e| (Outcome::Denied, e))?;
+            if caller_uid != 0 {
+                match uid_for_name(user) {
+                    Some(expected_uid) if caller_uid == expected_uid => {}
+                    Some(_) => {
+                        tracing::warn!(
+                            user,
+                            caller_uid,
+                            "verify: caller UID does not match target user UID"
+                        );
+                        return Err((
+                            Outcome::Denied,
+                            zbus::fdo::Error::AccessDenied(format!(
+                                "caller is not permitted to verify user '{user}'"
+                            )),
+                        ));
+                    }
+                    None => {
+                        tracing::warn!(user, "verify: unknown user");
+                        return Err((
+                            Outcome::UnknownUser,
+                            zbus::fdo::Error::Failed(format!("unknown user '{user}'")),
+                        ));
+                    }
+                }
+            }
+        }
+
+        // --- Rate limit check ---
+        {
+            let mut state = self.state.lock().await;
+            state.rate_limiter.check(user).map_err(|msg| {
+                tracing::warn!(user, "verify: rate limited");
+                (Outcome::RateLimited, zbus::fdo::Error::Failed(msg))
+            })?;
+        }
+
+        // --- Fetch gallery and config (release lock before engine call) ---
+        let (
+            engine,
+            gallery,
+            threshold,
+            frames_count,
+            timeout_secs,
+            face_wait,
+            liveness_enabled,
+            liveness_min_displacement,
+        ) = {
+            let state = self.state.lock().await;
+            let gallery = state.store.get_gallery_for_user(user).await.map_err(|e| {
+                tracing::error!(error = %e, "verify: gallery fetch failed");
+                (Outcome::StoreError, zbus::fdo::Error::Failed(e.to_string()))
+            })?;
+            (
+                state.engine.clone(),
+                gallery,
+                state.config.similarity_threshold,
+                state.config.frames_per_verify,
+                state.config.verify_timeout_secs,
+                state.config.face_wait,
+                state.config.liveness_enabled,
+                state.config.liveness_min_displacement,
+            )
+        };
+
+        if gallery.is_empty() {
+            tracing::warn!(user, "verify: no enrolled models");
+            return Err((
+                Outcome::NoModels,
+                zbus::fdo::Error::Failed(format!("no enrolled models for user '{user}'")),
+            ));
+        }
+
+        // --- Run engine with timeout (no lock held) ---
+        // Runtime errors (camera failure, timeout) are returned as Err and do NOT count
+        // as rate-limit failures. Liveness failures are treated as deliberate auth failures
+        // and converted to non-match so they are rate-limited like other failed attempts.
+        let timeout = std::time::Duration::from_secs(timeout_secs);
+        let (outcome, result) = match engine
+            .verify(
+                gallery,
+                threshold,
+                frames_count,
+                timeout,
+                face_wait,
+                liveness_enabled,
+                liveness_min_displacement,
+            )
+            .await
+        {
+            Ok(result) => {
+                let outcome = if result.result.matched {
+                    Outcome::Matched
+                } else {
+                    Outcome::NotMatched
+                };
+                (outcome, result)
+            }
+            Err(EngineError::LivenessCheckFailed {
+                displacement,
+                threshold,
+            }) => {
+                tracing::warn!(
+                    user,
+                    displacement,
+                    threshold,
+                    "verify: liveness check failed — treating as non-match"
+                );
+                (
+                    Outcome::LivenessFailed,
+                    crate::engine::VerifyResult {
+                        result: visage_core::MatchResult {
+                            matched: false,
+                            similarity: 0.0,
+                            model_id: None,
+                            model_label: None,
+                        },
+                        best_quality: 0.0,
+                    },
+                )
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "verify failed");
+                return Err((
+                    outcome_for_engine_error(&e),
+                    zbus::fdo::Error::Failed(e.to_string()),
+                ));
+            }
+        };
+
+        // --- Record rate-limit outcome ---
+        {
+            let mut state = self.state.lock().await;
+            if result.result.matched {
+                state.rate_limiter.record_success(user);
+            } else {
+                state.rate_limiter.record_failure(user);
+            }
+        }
+
+        tracing::info!(
+            user,
+            matched = result.result.matched,
+            similarity = result.result.similarity,
+            model_id = ?result.result.model_id,
+            "verify complete"
+        );
+
+        Ok((outcome, result.result.similarity))
+    }
+}
+
+/// The outcome class for an engine error that ends a `Verify`.
+///
+/// No wildcard arm: a new `EngineError` variant must be classed here before
+/// the daemon compiles, so `visage stats` never counts it under a wrong name.
+fn outcome_for_engine_error(error: &EngineError) -> Outcome {
+    match error {
+        EngineError::Camera(_) => Outcome::CameraError,
+        EngineError::Detector(_) | EngineError::Recognizer(_) | EngineError::ChannelClosed => {
+            Outcome::EngineError
+        }
+        EngineError::NoFaceDetected => Outcome::NoFace,
+        EngineError::NoUsableFrames => Outcome::DarkFrames,
+        EngineError::LivenessCheckFailed { .. } => Outcome::LivenessFailed,
+        EngineError::VerifyTimeout => Outcome::Timeout,
+    }
+}
+
+#[cfg(test)]
+mod outcome_tests {
+    use super::*;
+
+    #[test]
+    fn engine_errors_map_to_their_outcome_class() {
+        let cases = [
+            (
+                EngineError::Camera(visage_hw::CameraError::CaptureFailed("x".into())),
+                Outcome::CameraError,
+            ),
+            (
+                EngineError::Detector(visage_core::detector::DetectorError::InferenceFailed(
+                    "x".into(),
+                )),
+                Outcome::EngineError,
+            ),
+            (
+                EngineError::Recognizer(visage_core::recognizer::RecognizerError::InferenceFailed(
+                    "x".into(),
+                )),
+                Outcome::EngineError,
+            ),
+            (EngineError::ChannelClosed, Outcome::EngineError),
+            (EngineError::NoFaceDetected, Outcome::NoFace),
+            (EngineError::NoUsableFrames, Outcome::DarkFrames),
+            (
+                EngineError::LivenessCheckFailed {
+                    displacement: 0.1,
+                    threshold: 0.8,
+                },
+                Outcome::LivenessFailed,
+            ),
+            (EngineError::VerifyTimeout, Outcome::Timeout),
+        ];
+        for (error, expected) in cases {
+            assert_eq!(outcome_for_engine_error(&error), expected, "{error}");
+            // Every engine error is something that happened after the camera
+            // started, so each one counts as a face attempt.
+            assert!(expected.is_face_attempt(), "{error}");
+        }
     }
 }
 

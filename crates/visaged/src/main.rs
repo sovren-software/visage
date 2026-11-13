@@ -19,8 +19,13 @@ use store::FaceModelStore;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Colour only on a terminal. Under systemd stdout is the journal, where
+    // ANSI codes arrive as raw escape bytes: `journalctl -o json` then encodes
+    // every message as a byte array, and `journalctl -g` has to match around
+    // them.
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
+        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stdout()))
         .init();
 
     tracing::info!("visaged starting");
