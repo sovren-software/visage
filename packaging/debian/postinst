@@ -5,7 +5,7 @@ case "$1" in
         mkdir -p /var/lib/visage/models
         chmod 700 /var/lib/visage
         pam-auth-update --package visage 2>/dev/null || true
-        systemctl daemon-reload
+        systemctl daemon-reload 2>/dev/null || true
         systemctl enable visaged.service 2>/dev/null || true
         systemctl enable visage-resume.service 2>/dev/null || true
         if [ ! -f /var/lib/visage/models/det_10g.onnx ]; then
