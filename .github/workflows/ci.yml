@@ -220,8 +220,9 @@ jobs:
 
   # APT and DNF repositories on GitHub Pages, built by ziptie-soft/pkg-pages from this
   # run's .deb and .rpm plus the packages of earlier releases. Unsigned for now: no
-  # public-key pin is committed and no signing secret is passed. Needs Pages enabled
-  # with "GitHub Actions" as the source.
+  # public-key pin is committed and no signing secret is passed, so the sign and seal
+  # jobs sign nothing and no visage-keyring .deb is built. Needs Pages enabled with
+  # "GitHub Actions" as the source.
   # See https://github.com/ziptie-soft/pkg-pages/blob/master/docs/actions.md#publish-reusable-workflow
   packages:
     needs: release
@@ -230,7 +231,7 @@ jobs:
       contents: read
       pages: write
       id-token: write
-    uses: ziptie-soft/pkg-pages/.github/workflows/publish.yml@13ebc668a953ac090ded52ef7a63a14ecda051aa # v1.1.1
+    uses: ziptie-soft/pkg-pages/.github/workflows/publish.yml@3490cd5955c17ab9ec0e460b905a8ee079c5bc9f # v2.0.0
     with:
       version: ${{ needs.release.outputs.version }}
       tag: ${{ github.ref_name }}
@@ -240,6 +241,11 @@ jobs:
       description: Visage biometric (face) authentication for Linux
       signing-environment: ''
       smoke: visage --help > /dev/null
+      # Earlier releases come from the live site, checked against its pkg-pages.tsv. There
+      # is no site yet, so the first release takes them from the GitHub releases' assets
+      # (unsigned site, so no resign-history). Remove this line once that release is out
+      # (pkg-pages docs/upgrading.md#the-bootstrap-release).
+      history-from: releases
 
   clippy-latest:
     # Non-blocking early warning for toolchain drift.
