@@ -28,6 +28,11 @@ pub struct Config {
     /// the client's budget (`pam_visage.so timeout=N`, default 3 s); the
     /// window is also capped by `verify_timeout_secs`.
     pub face_wait: std::time::Duration,
+    /// Turn frames upright before examining them (`VISAGE_ROTATE`): off (the
+    /// default), `auto` to follow the device orientation from
+    /// iio-sensor-proxy, or a fixed 90, 180 or 270 degrees. See
+    /// `orientation.rs`.
+    pub rotate: crate::orientation::RotateMode,
     /// Number of warmup frames to discard at startup (camera AGC/AE stabilization).
     pub warmup_frames: usize,
     /// Number of frames to capture per verify attempt.
@@ -83,6 +88,9 @@ impl Config {
             similarity_threshold: env_f32("VISAGE_SIMILARITY_THRESHOLD", 0.40),
             verify_timeout_secs: env_u64("VISAGE_VERIFY_TIMEOUT_SECS", 10),
             face_wait: std::time::Duration::from_millis(env_u64("VISAGE_FACE_WAIT_MS", 0)),
+            rotate: crate::orientation::parse_rotate_mode(
+                std::env::var("VISAGE_ROTATE").ok().as_deref(),
+            ),
             warmup_frames: env_usize("VISAGE_WARMUP_FRAMES", 4),
             frames_per_verify: env_usize("VISAGE_FRAMES_PER_VERIFY", 3),
             frames_per_enroll: env_usize("VISAGE_FRAMES_PER_ENROLL", 5),
